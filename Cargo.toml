@@ -1,0 +1,12 @@
+[package]
+name = "telemetry-rs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+iced = { version = "0.12", features = ["tokio"] }
+tokio = { version = "1.36", features = ["full"] }
+socketcan = "3.4.0"
+anyhow = "1.0"
+futures = "0.3"
+async-stream = "0.3"
