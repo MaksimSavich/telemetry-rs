@@ -1,5 +1,4 @@
 use crate::can::CanDecoder;
-// use futures::StreamExt;
 use iced::widget::{column, text};
 use iced::{subscription, Application, Command, Element, Subscription};
 use socketcan::{CanSocket, Socket};
