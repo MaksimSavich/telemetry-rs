@@ -1,10 +1,12 @@
-use iced::subscription;
+use crate::can::CanDecoder;
+// use futures::StreamExt;
 use iced::widget::{column, text};
-use iced::{Application, Command, Element, Subscription};
-use socketcan::{CanSocket, EmbeddedFrame, Socket};
+use iced::{subscription, Application, Command, Element, Subscription};
+use socketcan::{CanSocket, Socket};
 
 pub struct TelemetryGui {
     latest_frame: String,
+    decoder: CanDecoder,
 }
 
 #[derive(Debug, Clone)]
@@ -18,31 +20,30 @@ impl Application for TelemetryGui {
     type Theme = iced::Theme;
     type Flags = ();
 
-    fn new(_flags: ()) -> (Self, iced::Command<Message>) {
+    fn new(_flags: ()) -> (Self, Command<Message>) {
         (
             Self {
-                latest_frame: "No data yet...".to_string(),
+                latest_frame: "Waiting for decoded CAN data...".into(),
+                decoder: CanDecoder::new("telemetry.dbc"),
             },
             Command::none(),
         )
     }
 
     fn title(&self) -> String {
-        "Telemetry RS - GUI".to_string()
+        "Telemetry RS - GUI (Decoded)".into()
     }
 
-    fn update(&mut self, message: Message) -> iced::Command<Message> {
-        match message {
-            Message::CanFrameReceived(frame_str) => {
-                self.latest_frame = frame_str;
-            }
+    fn update(&mut self, message: Message) -> Command<Message> {
+        if let Message::CanFrameReceived(frame_str) = message {
+            self.latest_frame = frame_str;
         }
-        iced::Command::none()
+        Command::none()
     }
 
     fn view(&self) -> Element<Message> {
         column![
-            text("Telemetry GUI - Latest CAN Frame:").size(24),
+            text("Telemetry GUI - Latest Decoded CAN Data:").size(24),
             text(&self.latest_frame).size(20),
         ]
         .padding(20)
@@ -50,35 +51,19 @@ impl Application for TelemetryGui {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        subscription::unfold("can_subscription", (), |_| async {
-            can_frame_listener().await
+        let decoder = self.decoder.clone();
+        subscription::unfold("can_subscription", decoder, |decoder| async {
+            let socket = CanSocket::open("vcan0").expect("CAN socket failed");
+            socket.set_nonblocking(false).unwrap();
+            loop {
+                if let Ok(frame) = socket.read_frame() {
+                    if let Some(decoded) = decoder.decode(frame) {
+                        return (decoded, decoder);
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+            }
         })
         .map(Message::CanFrameReceived)
-    }
-}
-
-// Asynchronous listener to subscribe to CAN frames
-async fn can_frame_listener() -> (String, ()) {
-    let socket = CanSocket::open("vcan0").expect("Unable to open CAN socket");
-    socket.set_nonblocking(false).unwrap();
-
-    match socket.read_frame() {
-        Ok(frame) => {
-            let raw_id = match frame.id() {
-                socketcan::Id::Standard(std_id) => std_id.as_raw() as u32,
-                socketcan::Id::Extended(ext_id) => ext_id.as_raw(),
-            };
-
-            let data_hex: Vec<String> = frame
-                .data()
-                .iter()
-                .map(|byte| format!("{:02X}", byte))
-                .collect();
-
-            let frame_str = format!("ID={:03X} Data=[{}]", raw_id, data_hex.join(" "));
-
-            (frame_str, ())
-        }
-        Err(_) => ("Error reading CAN frame".to_string(), ()),
     }
 }
