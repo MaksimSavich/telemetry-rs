@@ -1,30 +1,29 @@
-use iced::{executor, Application, Command, Element, Settings, Theme};
+use iced::widget::Text;
+use iced::{Element, Sandbox};
 
 pub struct TelemetryGui;
 
-impl Application for TelemetryGui {
-    type Executor = executor::Tokio;
-    type Message = ();
-    type Theme = Theme;
-    type Flags = ();
+#[derive(Debug, Clone)]
+pub enum Message {}
 
-    fn new(_flags: ()) -> (Self, Command<Self::Message>) {
-        (TelemetryGui, Command::none())
+impl Sandbox for TelemetryGui {
+    type Message = Message;
+
+    fn new() -> Self {
+        Self
     }
 
     fn title(&self) -> String {
-        String::from("Telemetry RS")
+        String::from("Telemetry RS - GUI")
     }
 
-    fn update(&mut self, _message: Self::Message) -> Command<Self::Message> {
-        Command::none()
+    fn update(&mut self, message: Message) {
+        match message {
+            // messages handling logic will go here later
+        }
     }
 
-    fn view(&self) -> Element<Self::Message> {
-        "Telemetry GUI Placeholder".into()
+    fn view(&self) -> Element<Message> {
+        Text::new("Hello Telemetry GUI!").into()
     }
-}
-
-pub fn run_gui() -> iced::Result {
-    TelemetryGui::run(Settings::default())
 }
