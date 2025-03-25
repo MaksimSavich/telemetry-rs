@@ -35,6 +35,6 @@ BS_:
 BU_: DBG
 
 BO_ 256 ENGINE_DATA: 8 DBG
- SG_ Engine_RPM : 0|16@1+ (1,0) [0|16383.75] "rpm"  DBG
+ SG_ Vehicle_Speed : 0|16@1+ (1,0) [0|16383.75] "rpm"  DBG
  SG_ Engine_Temp : 16|8@1+ (1,-40) [-40|215] "degC"  DBG
  SG_ Throttle_Pos : 24|8@1+ (0.4,0) [0|100] "%"  DBG
