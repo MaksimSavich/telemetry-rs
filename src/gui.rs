@@ -274,7 +274,7 @@ impl Application for TelemetryGui {
     fn subscription(&self) -> Subscription<Message> {
         let decoder = self.decoder.clone();
         subscription::unfold("can_subscription", decoder, |decoder| async {
-            let socket = CanSocket::open("vcan0").expect("CAN socket failed");
+            let socket = CanSocket::open("can0").expect("CAN socket failed");
             socket.set_nonblocking(false).unwrap();
             loop {
                 if let Ok(frame) = socket.read_frame() {
