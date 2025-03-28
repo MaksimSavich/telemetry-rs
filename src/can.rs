@@ -45,8 +45,25 @@ impl CanDecoder {
                         }
                         value
                     };
+                    // Scale raw value to engineering value
                     let signal_value = (*signal.factor() * raw_value as f64) + *signal.offset();
-                    acc.push_str(&format!("{}: {}\n", signal.name(), signal_value));
+
+                    // Lookup value descriptions via DBC (not signal)
+                    let value_desc = self
+                        .dbc
+                        .value_descriptions_for_signal(*message.message_id(), signal.name())
+                        .and_then(|descs| {
+                            descs
+                                .iter()
+                                .find(|desc| (*desc.a()) as u64 == raw_value)
+                                .map(|d| d.b())
+                        });
+
+                    if let Some(desc) = value_desc {
+                        acc.push_str(&format!("{}: {}\n", signal.name(), desc));
+                    } else {
+                        acc.push_str(&format!("{}: {}\n", signal.name(), signal_value));
+                    }
                     acc
                 }),
         )

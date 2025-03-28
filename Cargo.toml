@@ -9,3 +9,4 @@ tokio = { version = "1", features = ["full"] }
 socketcan = "3.5.0"
 futures = "0.3.31"
 can-dbc = "6.0.0"
+chrono = "0.4.40"
