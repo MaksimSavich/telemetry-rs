@@ -19,7 +19,7 @@ pub struct Fault {
 pub struct TelemetryGui {
     speed_mph: f64,
     direction: String,
-    bps_state: String,
+    bps_state: &str,
     battery_voltage: f64,
     battery_current: f64,
     battery_charge: f64,
@@ -89,7 +89,7 @@ impl Application for TelemetryGui {
                             "Charge_Level" => self.battery_charge = val.parse().unwrap_or(0.0),
                             "Supp_Temperature_C" => self.battery_temp = val.parse().unwrap_or(0.0),
                             "BPS_ON_Time" => self.bps_ontime = val.parse().unwrap_or(0),
-                            "BPS_State" => self.bps_state = val.to_string(),
+                            "BPS_State" => self.bps_state = val,
                             _ => {
                                 // Check for fault signals
                                 if signal.starts_with("Fault_") {
