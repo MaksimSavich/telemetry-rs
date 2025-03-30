@@ -89,7 +89,7 @@ impl Application for TelemetryGui {
                             "Charge_Level" => self.battery_charge = val.parse().unwrap_or(0.0),
                             "Supp_Temperature_C" => self.battery_temp = val.parse().unwrap_or(0.0),
                             "BPS_ON_Time" => self.bps_ontime = val.parse().unwrap_or(0),
-                            "BPS_State" => self.bps_state = String::from(val),
+                            "BPS_State" => self.bps_state = val.to_string(),
                             _ => {
                                 // Check for fault signals
                                 if signal.starts_with("Fault_") {
@@ -219,7 +219,7 @@ impl Application for TelemetryGui {
             column![
                 text("BPS Info").size(20),
                 text(format!("Time: {:.1} Seconds", self.bps_ontime)),
-                text(format!("State: {:.1}", self.bps_state)),
+                text(format!("State: {}", self.bps_state)),
             ]
             .spacing(5)
             .align_items(Alignment::Start),
