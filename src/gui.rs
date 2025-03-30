@@ -278,6 +278,7 @@ impl Application for TelemetryGui {
             socket.set_nonblocking(false).unwrap();
             loop {
                 if let Ok(frame) = socket.read_frame() {
+                    println!("Received CAN frame: {:?}", frame);
                     if let Some(decoded) = decoder.decode(frame) {
                         return (decoded, decoder);
                     }
