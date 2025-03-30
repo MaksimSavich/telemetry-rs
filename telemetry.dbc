@@ -80,8 +80,8 @@ BO_ 1 MPPT_Status: 5 Vector__XXX
 BO_ 1910 BPS_Sense: 8 Vector__XXX
  SG_ BPS_Current_A : 48|16@1+ (0.01,0) [0|0] "" Vector__XXX
  SG_ DCDC_Voltage_V : 32|16@1+ (0.01,0) [0|0] "" Vector__XXX
- SG_ Supp_Temperature_C : 16|16@1- (0.01,0) [-318|317] "�C" Vector__XXX
- SG_ Supp_Voltage_V : 0|16@1+ (0.01,0) [0|0] "" Vector__XXX
+ SG_ BPS_Voltage_C : 16|16@1- (0.01,0) [-318|317] "�C" Vector__XXX
+ SG_ Supp_Temperature_C : 0|16@1+ (0.01,0) [0|0] "" Vector__XXX
 
 BO_ 1911 BPS_Misc: 8 Vector__XXX
  SG_ BPS_State : 62|2@1+ (1,0) [0|0] "" Vector__XXX
@@ -133,6 +133,3 @@ VAL_ 1911 Fault_BPS_Current 0 "OK" 1 "CAN Sensor Broken" 2 "Over Current" 3 "Res
 VAL_ 1911 Fault_BPS_DCDC_Voltage 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "Reserved" ;
 VAL_ 1911 Fault_BPS_Supp_Temperature 0 "OK" 1 "Under Temperature" 2 "Over Temperature" 3 "Reserved" ;
 VAL_ 1911 Fault_BPS_Supp_Voltage 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "Reserved" ;
-
-
-
