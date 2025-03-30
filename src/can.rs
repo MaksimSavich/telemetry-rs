@@ -47,7 +47,7 @@ impl CanDecoder {
                             can_dbc::ByteOrder::BigEndian => false,
                         };
 
-                        self.extract_signal_value(data, start_bit, size, is_intel)
+                        self.extract_signal_value(&data, start_bit, size, is_intel)
                     };
 
                     // Scale raw value to engineering value
