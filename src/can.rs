@@ -31,7 +31,11 @@ impl CanDecoder {
                 .iter()
                 .fold(String::new(), |mut acc, signal| {
                     let raw_value = {
-                        let data = frame.data();
+                        let data = {
+                            let mut data_array = frame.data().to_vec();
+                            data_array.reverse(); // Reverse if needed based on your CAN implementation
+                            data_array
+                        };
                         let start_bit = *signal.start_bit() as usize;
                         let size = *signal.signal_size() as usize;
 
