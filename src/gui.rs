@@ -80,7 +80,7 @@ impl Application for TelemetryGui {
                         match signal {
                             "Actual_Speed_RPM" => self.speed_mph = val.parse().unwrap_or(0.0),
                             "Direction" => self.direction = val.to_string(),
-                            "Supp_Voltage_V" => self.battery_voltage = val.parse().unwrap_or(0.0),
+                            "BPS_Voltage_V" => self.battery_voltage = val.parse().unwrap_or(0.0),
                             "BPS_Current_A" => self.battery_current = val.parse().unwrap_or(0.0),
                             "Charge_Level" => self.battery_charge = val.parse().unwrap_or(0.0),
                             "Supp_Temperature_C" => self.battery_temp = val.parse().unwrap_or(0.0),
