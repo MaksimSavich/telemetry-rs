@@ -133,3 +133,6 @@ VAL_ 1911 Fault_BPS_Current 0 "OK" 1 "CAN Sensor Broken" 2 "Over Current" 3 "Res
 VAL_ 1911 Fault_BPS_DCDC_Voltage 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "Reserved" ;
 VAL_ 1911 Fault_BPS_Supp_Temperature 0 "OK" 1 "Under Temperature" 2 "Over Temperature" 3 "Reserved" ;
 VAL_ 1911 Fault_BPS_Supp_Voltage 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "Reserved" ;
+
+
+
