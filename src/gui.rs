@@ -19,10 +19,12 @@ pub struct Fault {
 pub struct TelemetryGui {
     speed_mph: f64,
     direction: String,
+    bps_state: String,
     battery_voltage: f64,
     battery_current: f64,
     battery_charge: f64,
     battery_temp: f64,
+    bps_ontime: u64,
     latest_fault: Option<String>,
     fullscreen: bool,
     active_faults: HashMap<String, Fault>,
@@ -52,13 +54,15 @@ impl Application for TelemetryGui {
         (
             Self {
                 latest_fault: None,
-                direction: "Forward".into(),
+                direction: "Neutral".into(),
                 fullscreen: false,
                 speed_mph: 0.0,
                 battery_voltage: 0.0,
                 battery_current: 0.0,
                 battery_charge: 0.0,
                 battery_temp: 0.0,
+                bps_ontime: 0,
+                bps_state: "Standby".into(),
                 active_faults: HashMap::new(),
                 fault_history: Vec::new(),
                 theme: iced::Theme::Dark,
@@ -84,6 +88,8 @@ impl Application for TelemetryGui {
                             "BPS_Current_A" => self.battery_current = val.parse().unwrap_or(0.0),
                             "Charge_Level" => self.battery_charge = val.parse().unwrap_or(0.0),
                             "Supp_Temperature_C" => self.battery_temp = val.parse().unwrap_or(0.0),
+                            "BPS_ON_Time" => self.bps_ontime = val.parse().unwrap_or(0),
+                            "BPS_State" => self.bps_state = val.to_string(),
                             _ => {
                                 // Check for fault signals
                                 if signal.starts_with("Fault_") {
@@ -208,6 +214,20 @@ impl Application for TelemetryGui {
         .width(Length::FillPortion(1))
         .style(iced::theme::Container::Box);
 
+        // Battery info box
+        let bps_box = container(
+            column![
+                text("BPS Info").size(20),
+                text(format!("Time: {:.1} Seconds", self.bps_ontime)),
+                text(format!("State: {:.1}", self.bps_state)),
+            ]
+            .spacing(5)
+            .align_items(Alignment::Start),
+        )
+        .padding(10)
+        .width(Length::FillPortion(1))
+        .style(iced::theme::Container::Box);
+
         // Fault Indicators
         let fault_indicator: iced::widget::Container<'_, Message, Theme, iced::Renderer> =
             container(text("FAULT"))
@@ -258,6 +278,7 @@ impl Application for TelemetryGui {
                 speed_text,
                 battery_box, // Right side
             ],
+            bps_box,
             // .width(Length::Fill)
             // .spacing(20)
             // .align_items(Alignment::Center)
