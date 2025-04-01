@@ -9,6 +9,7 @@
 │  │  ├── battery_box.rs
 │  │  ├── bps_box.rs
 │  │  ├── fault_panel.rs
+│  │  ├── layout.rs
 │  │  ├── mod.rs
 │  │  ├── serial_panel.rs
 │  │  ├── status_box.rs
