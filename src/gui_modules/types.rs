@@ -23,6 +23,10 @@ pub enum Message {
     PortSelected(String),
     ConnectSerialPort,
     ToggleLoRa,
+
+    // Fault panel messages
+    ToggleFaultPanelExpanded,
+    CycleFault,
 }
 
 // Container styling helper

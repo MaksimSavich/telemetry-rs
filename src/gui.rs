@@ -1,6 +1,6 @@
 use crate::can::CanDecoder;
 use crate::serial::SerialManager;
-use iced::{subscription, Application, Command, Element, Subscription, Theme};
+use iced::{subscription, time, Application, Command, Element, Subscription, Theme};
 use socketcan::{CanSocket, EmbeddedFrame, Socket};
 use std::collections::HashMap;
 
@@ -30,6 +30,10 @@ pub struct TelemetryGui {
 
     // LoRa enabled flag
     lora_enabled: bool,
+
+    // Fault panel state
+    fault_panel_expanded: bool,
+    current_fault_index: usize,
 }
 
 impl Application for TelemetryGui {
@@ -69,6 +73,10 @@ impl Application for TelemetryGui {
                 selected_port: None,
                 serial_status: "Disconnected".into(),
                 lora_enabled: false,
+
+                // Fault panel state
+                fault_panel_expanded: false,
+                current_fault_index: 0,
             },
             Command::none(),
         )
@@ -166,11 +174,21 @@ impl Application for TelemetryGui {
                     fault.is_active = false;
                 }
                 self.active_faults.clear();
+                self.current_fault_index = 0;
             }
 
-            // Message::PortsRefreshed(ports) => {
-            //     self.available_ports = ports;
-            // }
+            Message::ToggleFaultPanelExpanded => {
+                self.fault_panel_expanded = !self.fault_panel_expanded;
+            }
+
+            Message::CycleFault => {
+                // Only cycle if we have active faults
+                if !self.active_faults.is_empty() {
+                    self.current_fault_index =
+                        (self.current_fault_index + 1) % self.active_faults.len();
+                }
+            }
+
             Message::PortSelected(port) => {
                 self.selected_port = Some(port);
             }
@@ -233,7 +251,13 @@ impl Application for TelemetryGui {
         let battery_element = battery_box(&battery_data);
         let bps_element = bps_box(&bps_data);
         let serial_element = serial_panel(&serial_config);
-        let fault_element = fault_section(&self.active_faults);
+
+        // Create fault panel with expanded state and current index
+        let fault_element = fault_section(
+            &self.active_faults,
+            self.fault_panel_expanded,
+            self.current_fault_index,
+        );
 
         // Use the layout utility to organize everything
         main_layout(
@@ -249,19 +273,32 @@ impl Application for TelemetryGui {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        let decoder = self.decoder.clone();
-        subscription::unfold("can_subscription", decoder, |decoder| async {
-            let socket = CanSocket::open("can0").expect("CAN socket failed");
-            socket.set_nonblocking(false).unwrap();
-            loop {
-                if let Ok(frame) = socket.read_frame() {
-                    println!("Received CAN frame: {:?}", frame);
-                    if let Some(decoded) = decoder.decode(frame.clone()) {
-                        return (Message::CanFrameReceived(decoded, frame), decoder);
+        // Combine subscriptions
+        Subscription::batch(vec![
+            // Original CAN subscription
+            {
+                let decoder = self.decoder.clone();
+                subscription::unfold("can_subscription", decoder, |decoder| async {
+                    let socket = CanSocket::open("vcan0").expect("CAN socket failed");
+                    socket.set_nonblocking(false).unwrap();
+                    loop {
+                        if let Ok(frame) = socket.read_frame() {
+                            println!("Received CAN frame: {:?}", frame);
+                            if let Some(decoded) = decoder.decode(frame.clone()) {
+                                return (Message::CanFrameReceived(decoded, frame), decoder);
+                            }
+                        }
+                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                     }
-                }
-                tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-            }
-        })
+                })
+            },
+            // Add a timer for cycling through faults when not expanded
+            // Only subscribe if there are active faults and panel is not expanded
+            if !self.active_faults.is_empty() && !self.fault_panel_expanded {
+                time::every(std::time::Duration::from_secs(2)).map(|_| Message::CycleFault)
+            } else {
+                Subscription::none()
+            },
+        ])
     }
 }
