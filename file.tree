@@ -5,7 +5,16 @@
 ├── file.tree
 ├── src
 │  ├── can.rs
+│  ├── gui_modules
+│  │  ├── battery_box.rs
+│  │  ├── bps_box.rs
+│  │  ├── fault_panel.rs
+│  │  ├── mod.rs
+│  │  ├── serial_panel.rs
+│  │  ├── status_box.rs
+│  │  └── types.rs
 │  ├── gui.rs
+│  ├── layout.rs
 │  ├── main.rs
 │  ├── packet.options
 │  ├── packet.proto

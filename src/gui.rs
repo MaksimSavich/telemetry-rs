@@ -1,22 +1,13 @@
 use crate::can::CanDecoder;
 use crate::serial::SerialManager;
-use chrono::{DateTime, Utc};
-use iced::widget::container::StyleSheet;
-use iced::widget::{button, column, container, pick_list, row, text, text_input};
-use iced::{
-    subscription, Alignment, Application, Color, Command, Element, Length, Subscription, Theme,
-};
+use iced::{subscription, Application, Command, Element, Subscription, Theme};
 use socketcan::{CanFrame, CanSocket, EmbeddedFrame, Socket};
 use std::collections::HashMap;
 use std::sync::Arc;
 
-#[derive(Clone, Debug)]
-pub struct Fault {
-    name: String,
-    timestamp: DateTime<Utc>,
-    is_active: bool,
-    value: String,
-}
+// Import our component modules
+mod gui_modules;
+use crate::gui_modules::*;
 
 pub struct TelemetryGui {
     speed_mph: f64,
@@ -42,19 +33,6 @@ pub struct TelemetryGui {
 
     // LoRa enabled flag
     lora_enabled: bool,
-}
-
-#[derive(Debug, Clone)]
-pub enum Message {
-    CanFrameReceived(String, CanFrame), // Added the original frame
-    ToggleFullscreen,
-    ClearFaults,
-
-    // Serial port messages
-    PortsRefreshed(Vec<String>),
-    PortSelected(String),
-    ConnectSerialPort,
-    ToggleLoRa,
 }
 
 impl Application for TelemetryGui {
@@ -131,7 +109,7 @@ impl Application for TelemetryGui {
                                         if !self.active_faults.contains_key(&fault_name) {
                                             let new_fault = Fault {
                                                 name: fault_name.clone(),
-                                                timestamp: Utc::now(),
+                                                timestamp: chrono::Utc::now(),
                                                 is_active: true,
                                                 value: val.to_owned(),
                                             };
@@ -227,185 +205,51 @@ impl Application for TelemetryGui {
     }
 
     fn view(&self) -> Element<Message> {
-        // Fullscreen button
-        let fullscreen_button = container(
-            iced::widget::button(text(if self.fullscreen {
-                "Exit Fullscreen"
-            } else {
-                "Fullscreen"
-            }))
-            .on_press(Message::ToggleFullscreen),
+        // Create data structs for each component
+        let battery_data = BatteryData {
+            voltage: self.battery_voltage,
+            current: self.battery_current,
+            charge: self.battery_charge,
+            temp: self.battery_temp,
+        };
+
+        let bps_data = BpsData {
+            ontime: self.bps_ontime,
+            state: self.bps_state.clone(),
+        };
+
+        let status_data = StatusData {
+            direction: self.direction.clone(),
+            latest_fault: self.latest_fault.clone(),
+        };
+
+        let serial_config = SerialConfig {
+            available_ports: self.available_ports.clone(),
+            selected_port: self.selected_port.clone(),
+            serial_status: self.serial_status.clone(),
+            lora_enabled: self.lora_enabled,
+        };
+
+        // Use our components
+        let direction_element = direction_text(&self.direction);
+        let speed_element = speed_text(self.speed_mph);
+        let status_element = status_box(&status_data);
+        let battery_element = battery_box(&battery_data);
+        let bps_element = bps_box(&bps_data);
+        let serial_element = serial_panel(&serial_config);
+        let fault_element = fault_section(&self.active_faults);
+
+        // Use the layout utility to organize everything
+        main_layout(
+            self.fullscreen,
+            direction_element,
+            speed_element,
+            status_element,
+            battery_element,
+            bps_element,
+            serial_element,
+            fault_element,
         )
-        .width(Length::Fill)
-        .align_x(iced::alignment::Horizontal::Right);
-
-        // Direction text
-        let direction_text = container(
-            text(&self.direction)
-                .size(28)
-                .horizontal_alignment(iced::alignment::Horizontal::Center),
-        )
-        .width(Length::Fill)
-        .align_x(iced::alignment::Horizontal::Center);
-
-        // Speed text
-        let speed_text = container(
-            text(format!("{:.1} MPH", self.speed_mph))
-                .size(60)
-                .horizontal_alignment(iced::alignment::Horizontal::Center),
-        )
-        .width(Length::Fill)
-        .align_x(iced::alignment::Horizontal::Center);
-
-        // Status info box
-        let status_box = container(
-            column![
-                text("CAN Status").size(20),
-                text(format!("Direction: {}", self.direction)),
-                text(format!(
-                    "Fault: {}",
-                    self.latest_fault.clone().unwrap_or("No Faults".into())
-                ))
-            ]
-            .spacing(5)
-            .align_items(Alignment::Start),
-        )
-        .padding(10)
-        .width(Length::FillPortion(1))
-        .style(iced::theme::Container::Box);
-
-        // Battery info box
-        let battery_box = container(
-            column![
-                text("Battery Info").size(20),
-                text(format!("Voltage: {:.1} V", self.battery_voltage)),
-                text(format!("Current: {:.1} A", self.battery_current)),
-                text(format!("Charge: {:.1} %", self.battery_charge)),
-                text(format!("Temp: {:.1} °C", self.battery_temp))
-            ]
-            .spacing(5)
-            .align_items(Alignment::Start),
-        )
-        .padding(10)
-        .width(Length::FillPortion(1))
-        .style(iced::theme::Container::Box);
-
-        // Battery info box
-        let bps_box = container(
-            column![
-                text("BPS Info").size(20),
-                text(format!("Time: {:.1} Seconds", self.bps_ontime)),
-                text(format!("State: {}", self.bps_state)),
-            ]
-            .spacing(5)
-            .align_items(Alignment::Start),
-        )
-        .padding(10)
-        .width(Length::FillPortion(1))
-        .style(iced::theme::Container::Box);
-
-        // Fault Indicators
-        let fault_indicator: iced::widget::Container<'_, Message, Theme, iced::Renderer> =
-            container(text("FAULT"))
-                .style(if !self.active_faults.is_empty() {
-                    println!("Faults detected");
-                    iced::theme::Container::Custom(Box::new(move |theme: &Theme| {
-                        let mut appearance = theme.appearance(&iced::theme::Container::Box);
-                        appearance.background = Some(Color::from_rgb(1.0, 0.0, 0.0).into());
-                        appearance.text_color = Some(Color::WHITE);
-                        appearance
-                    }))
-                } else {
-                    iced::theme::Container::Box
-                })
-                .padding(10);
-
-        // Fault List
-        let fault_list = column(
-            self.active_faults
-                .values()
-                .map(|fault| text(format!("{}: {} (Active)", fault.name, fault.value)).into())
-                .collect::<Vec<_>>(),
-        )
-        .spacing(5);
-
-        // Clear Faults Button
-        let clear_faults_button = button("Clear Faults").on_press(Message::ClearFaults);
-
-        // Fault Section
-        let fault_section = column![
-            row![fault_indicator, fault_list]
-                .spacing(10)
-                .align_items(Alignment::Center),
-            clear_faults_button
-        ]
-        .spacing(10);
-
-        // Serial port configuration section
-        let port_dropdown = pick_list(
-            self.available_ports.as_slice(),
-            self.selected_port.clone(),
-            Message::PortSelected,
-        )
-        .width(Length::Fill);
-
-        let connect_button = button("Connect")
-            .on_press(Message::ConnectSerialPort)
-            .width(Length::Fill);
-
-        let lora_toggle = button(if self.lora_enabled {
-            "Disable LoRa Transmission"
-        } else {
-            "Enable LoRa Transmission"
-        })
-        .on_press(Message::ToggleLoRa)
-        .width(Length::Fill);
-
-        let lora_status = text(format!("Status: {}", self.serial_status));
-
-        let serial_section = container(
-            column![
-                text("LoRa Configuration").size(20),
-                row![
-                    text("Port:").width(Length::FillPortion(1)),
-                    port_dropdown.width(Length::FillPortion(3))
-                ]
-                .spacing(10),
-                connect_button,
-                lora_toggle,
-                lora_status
-            ]
-            .spacing(10)
-            .align_items(Alignment::Start),
-        )
-        .padding(10)
-        .width(Length::Fill)
-        .style(iced::theme::Container::Box);
-
-        // Main layout using columns and rows
-        column![
-            // Top row for fullscreen button
-            fullscreen_button,
-            // Direction text
-            direction_text,
-            // Bottom row for status and battery info
-            row![
-                status_box, // Left side
-                // Speed text
-                speed_text,
-                battery_box, // Right side
-            ],
-            bps_box,
-            // Add new Serial and LoRa section
-            serial_section,
-            fault_section // Add the fault section here
-        ]
-        .padding(20)
-        .spacing(10)
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .align_items(Alignment::Center)
-        .into()
     }
 
     fn subscription(&self) -> Subscription<Message> {
