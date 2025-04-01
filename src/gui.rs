@@ -1,12 +1,14 @@
 use crate::can::CanDecoder;
+use crate::serial::SerialManager;
 use chrono::{DateTime, Utc};
 use iced::widget::container::StyleSheet;
-use iced::widget::{button, column, container, row, text};
+use iced::widget::{button, column, container, pick_list, row, text, text_input};
 use iced::{
     subscription, Alignment, Application, Color, Command, Element, Length, Subscription, Theme,
 };
-use socketcan::{CanSocket, Socket};
+use socketcan::{CanFrame, CanSocket, EmbeddedFrame, Socket};
 use std::collections::HashMap;
+use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 pub struct Fault {
@@ -31,13 +33,28 @@ pub struct TelemetryGui {
     fault_history: Vec<Fault>,
     decoder: CanDecoder,
     theme: Theme,
+
+    // Serial communication
+    serial_manager: SerialManager,
+    available_ports: Vec<String>,
+    selected_port: Option<String>,
+    serial_status: String,
+
+    // LoRa enabled flag
+    lora_enabled: bool,
 }
 
 #[derive(Debug, Clone)]
 pub enum Message {
-    CanFrameReceived(String),
+    CanFrameReceived(String, CanFrame), // Added the original frame
     ToggleFullscreen,
     ClearFaults,
+
+    // Serial port messages
+    PortsRefreshed(Vec<String>),
+    PortSelected(String),
+    ConnectSerialPort,
+    ToggleLoRa,
 }
 
 impl Application for TelemetryGui {
@@ -51,6 +68,9 @@ impl Application for TelemetryGui {
     }
 
     fn new(_flags: ()) -> (Self, Command<Message>) {
+        let serial_manager = SerialManager::new();
+        let available_ports = SerialManager::list_available_ports();
+
         (
             Self {
                 latest_fault: None,
@@ -67,6 +87,13 @@ impl Application for TelemetryGui {
                 fault_history: Vec::new(),
                 theme: iced::Theme::Dark,
                 decoder: CanDecoder::new("telemetry.dbc"),
+
+                // Serial management
+                serial_manager,
+                available_ports,
+                selected_port: None,
+                serial_status: "Disconnected".into(),
+                lora_enabled: false,
             },
             Command::none(),
         )
@@ -78,7 +105,8 @@ impl Application for TelemetryGui {
 
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
-            Message::CanFrameReceived(decoded_str) => {
+            Message::CanFrameReceived(decoded_str, frame) => {
+                // Process telemetry data
                 for line in decoded_str.lines() {
                     if let Some((signal, val)) = line.split_once(": ") {
                         match signal {
@@ -125,6 +153,24 @@ impl Application for TelemetryGui {
                         }
                     }
                 }
+
+                // If LoRa transmission is enabled, send the CAN frame
+                if self.lora_enabled {
+                    // Extract frame data
+                    let raw_id = match frame.id() {
+                        socketcan::Id::Standard(std_id) => std_id.as_raw() as u32,
+                        socketcan::Id::Extended(ext_id) => ext_id.as_raw(),
+                    };
+
+                    // Send via serial
+                    if let Err(e) = self.serial_manager.send_can_frame(raw_id, frame.data()) {
+                        println!("Failed to send CAN frame over serial: {}", e);
+                        self.serial_status = format!("Error: {}", e);
+                    } else {
+                        // Successfully sent
+                        self.serial_status = format!("Sent: ID 0x{:X}", raw_id);
+                    }
+                }
             }
 
             Message::ToggleFullscreen => {
@@ -145,6 +191,36 @@ impl Application for TelemetryGui {
                     fault.is_active = false;
                 }
                 self.active_faults.clear();
+            }
+
+            Message::PortsRefreshed(ports) => {
+                self.available_ports = ports;
+            }
+
+            Message::PortSelected(port) => {
+                self.selected_port = Some(port);
+            }
+
+            Message::ConnectSerialPort => {
+                if let Some(port) = &self.selected_port {
+                    match self.serial_manager.connect(port, 115200) {
+                        Ok(_) => {
+                            self.serial_status = format!("Connected to {}", port);
+                        }
+                        Err(e) => {
+                            self.serial_status = format!("Error: {}", e);
+                        }
+                    }
+                }
+            }
+
+            Message::ToggleLoRa => {
+                self.lora_enabled = !self.lora_enabled;
+                self.serial_status = if self.lora_enabled {
+                    "LoRa transmission enabled".to_string()
+                } else {
+                    "LoRa transmission disabled".to_string()
+                };
             }
         }
         Command::none()
@@ -265,6 +341,47 @@ impl Application for TelemetryGui {
         ]
         .spacing(10);
 
+        // Serial port configuration section
+        let port_dropdown = pick_list(
+            self.available_ports.as_slice(),
+            self.selected_port.clone(),
+            Message::PortSelected,
+        )
+        .width(Length::Fill);
+
+        let connect_button = button("Connect")
+            .on_press(Message::ConnectSerialPort)
+            .width(Length::Fill);
+
+        let lora_toggle = button(if self.lora_enabled {
+            "Disable LoRa Transmission"
+        } else {
+            "Enable LoRa Transmission"
+        })
+        .on_press(Message::ToggleLoRa)
+        .width(Length::Fill);
+
+        let lora_status = text(format!("Status: {}", self.serial_status));
+
+        let serial_section = container(
+            column![
+                text("LoRa Configuration").size(20),
+                row![
+                    text("Port:").width(Length::FillPortion(1)),
+                    port_dropdown.width(Length::FillPortion(3))
+                ]
+                .spacing(10),
+                connect_button,
+                lora_toggle,
+                lora_status
+            ]
+            .spacing(10)
+            .align_items(Alignment::Start),
+        )
+        .padding(10)
+        .width(Length::Fill)
+        .style(iced::theme::Container::Box);
+
         // Main layout using columns and rows
         column![
             // Top row for fullscreen button
@@ -279,10 +396,9 @@ impl Application for TelemetryGui {
                 battery_box, // Right side
             ],
             bps_box,
-            // .width(Length::Fill)
-            // .spacing(20)
-            // .align_items(Alignment::Center)
-            fault_section // Add the new fault section here
+            // Add new Serial and LoRa section
+            serial_section,
+            fault_section // Add the fault section here
         ]
         .padding(20)
         .spacing(10)
@@ -300,13 +416,12 @@ impl Application for TelemetryGui {
             loop {
                 if let Ok(frame) = socket.read_frame() {
                     println!("Received CAN frame: {:?}", frame);
-                    if let Some(decoded) = decoder.decode(frame) {
-                        return (decoded, decoder);
+                    if let Some(decoded) = decoder.decode(frame.clone()) {
+                        return (Message::CanFrameReceived(decoded, frame), decoder);
                     }
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             }
         })
-        .map(Message::CanFrameReceived)
     }
 }

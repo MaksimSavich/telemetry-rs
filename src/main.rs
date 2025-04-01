@@ -1,5 +1,7 @@
 mod can;
 mod gui;
+mod proto;
+mod serial;
 
 use gui::TelemetryGui;
 use iced::{Application, Settings};

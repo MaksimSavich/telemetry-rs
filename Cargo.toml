@@ -10,3 +10,9 @@ socketcan = "3.5.0"
 futures = "0.3.31"
 can-dbc = "6.0.0"
 chrono = "0.4.40"
+prost = "0.12"
+bytes = "1.5"
+serialport = "4.3"
+
+[build-dependencies]
+prost-build = "0.12"
