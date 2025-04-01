@@ -1,6 +1,6 @@
-use crate::gui::types::{create_error_container_style, Fault, Message};
+use crate::gui_modules::{create_error_container_style, Fault, Message};
 use iced::widget::{button, column, container, row, text};
-use iced::{Alignment, Element, Theme};
+use iced::{Alignment, Element};
 use std::collections::HashMap;
 
 pub fn fault_section(active_faults: &HashMap<String, Fault>) -> Element<'static, Message> {
@@ -17,7 +17,11 @@ pub fn fault_section(active_faults: &HashMap<String, Fault>) -> Element<'static,
     let fault_list = column(
         active_faults
             .values()
-            .map(|fault| text(format!("{}: {} (Active)", fault.name, fault.value)).into())
+            .map(|fault| {
+                let name = fault.name.clone();
+                let value = fault.value.clone();
+                text(format!("{}: {} (Active)", name, value)).into()
+            })
             .collect::<Vec<_>>(),
     )
     .spacing(5);

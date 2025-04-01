@@ -1,7 +1,8 @@
-use crate::gui::types::Message;
+use crate::gui_modules::Message;
 use iced::widget::{button, column, container, pick_list, row, text};
-use iced::{Alignment, Element, Length, Theme};
+use iced::{Alignment, Element, Length};
 
+#[derive(Clone)]
 pub struct SerialConfig {
     pub available_ports: Vec<String>,
     pub selected_port: Option<String>,
@@ -11,7 +12,7 @@ pub struct SerialConfig {
 
 pub fn serial_panel(config: &SerialConfig) -> Element<'static, Message> {
     let port_dropdown = pick_list(
-        config.available_ports.as_slice(),
+        config.available_ports.clone(), // Clone the vector here
         config.selected_port.clone(),
         Message::PortSelected,
     )

@@ -1,5 +1,6 @@
 mod can;
 mod gui;
+mod gui_modules;
 mod proto;
 mod serial;
 

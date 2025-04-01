@@ -1,12 +1,9 @@
 use crate::can::CanDecoder;
 use crate::serial::SerialManager;
 use iced::{subscription, Application, Command, Element, Subscription, Theme};
-use socketcan::{CanFrame, CanSocket, EmbeddedFrame, Socket};
+use socketcan::{CanSocket, EmbeddedFrame, Socket};
 use std::collections::HashMap;
-use std::sync::Arc;
 
-// Import our component modules
-mod gui_modules;
 use crate::gui_modules::*;
 
 pub struct TelemetryGui {
@@ -171,10 +168,9 @@ impl Application for TelemetryGui {
                 self.active_faults.clear();
             }
 
-            Message::PortsRefreshed(ports) => {
-                self.available_ports = ports;
-            }
-
+            // Message::PortsRefreshed(ports) => {
+            //     self.available_ports = ports;
+            // }
             Message::PortSelected(port) => {
                 self.selected_port = Some(port);
             }

@@ -1,7 +1,8 @@
-use crate::gui::types::Message;
+use crate::gui_modules::Message;
 use iced::widget::{column, container, text};
-use iced::{Alignment, Element, Length, Theme};
+use iced::{Alignment, Element, Length};
 
+#[derive(Clone)]
 pub struct BpsData {
     pub ontime: u64,
     pub state: String,

@@ -1,7 +1,6 @@
 use chrono::{DateTime, Utc};
-use iced::{Color, Theme};
+use iced::{widget::container::StyleSheet, Color, Theme};
 use socketcan::CanFrame;
-use std::collections::HashMap;
 
 // Re-export common types and messages for all components
 
@@ -21,14 +20,13 @@ pub enum Message {
     ClearFaults,
 
     // Serial port messages
-    PortsRefreshed(Vec<String>),
     PortSelected(String),
     ConnectSerialPort,
     ToggleLoRa,
 }
 
 // Container styling helper
-pub fn create_error_container_style() -> iced::theme::Container<'static> {
+pub fn create_error_container_style() -> iced::theme::Container {
     iced::theme::Container::Custom(Box::new(move |theme: &Theme| {
         let mut appearance = theme.appearance(&iced::theme::Container::Box);
         appearance.background = Some(Color::from_rgb(1.0, 0.0, 0.0).into());
