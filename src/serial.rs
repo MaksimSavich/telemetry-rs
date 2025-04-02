@@ -7,8 +7,8 @@ use std::time::Duration;
 use crate::proto::{Packet, PacketType, Transmission};
 
 // Define the start and end delimiters to match the LoRa module
-const START_DELIMITER: &[u8] = b"<START>"; // Using "###" as start delimiter
-const END_DELIMITER: &[u8] = b"<END>"; // Using "$$$" as end delimiter
+const START_DELIMITER: &[u8] = b"<START>"; // Start delimiter
+const END_DELIMITER: &[u8] = b"<END>"; // End delimiter
 
 pub struct SerialManager {
     port: Arc<Mutex<Option<Box<dyn SerialPort>>>>,
@@ -54,7 +54,17 @@ impl SerialManager {
         payload.extend_from_slice(data);
 
         // Create proto message
-        let packet = Packet::new_transmission(payload);
+        let transmission = Transmission { payload };
+
+        let packet = Packet {
+            r#type: PacketType::Transmission as i32,
+            transmission: Some(transmission),
+            settings: None,
+            log: None,
+            request: None,
+            gps: None,
+            ack: false,
+        };
 
         // Encode packet
         let mut encoded = Vec::new();
@@ -72,8 +82,6 @@ impl SerialManager {
         // Add length prefix for framing (2 bytes, big endian)
         let len = encoded.len() as u16;
         framed_data.extend_from_slice(&len.to_be_bytes());
-
-        // Add encoded data
         framed_data.extend_from_slice(&encoded);
 
         // Add end delimiter
@@ -84,7 +92,7 @@ impl SerialManager {
             port.write_all(&framed_data)
                 .map_err(|e| format!("Failed to write to serial port: {}", e))?;
 
-            // For debugging, print what we're sending
+            // For debugging
             println!(
                 "Sent frame: ID=0x{:X}, data={:?}, total bytes={}",
                 can_id,
