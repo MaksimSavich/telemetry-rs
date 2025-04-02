@@ -79,7 +79,6 @@ impl SerialManager {
             port.write_all(&framed_data)
                 .map_err(|e| format!("Failed to write to serial port: {}", e))?;
 
-            println!("SENT TO  LORA");
             Ok(())
         } else {
             Err("Serial port not open".to_string())
