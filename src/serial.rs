@@ -6,6 +6,10 @@ use std::time::Duration;
 
 use crate::proto::{Packet, PacketType, Transmission};
 
+// Define the start and end delimiters to match the LoRa module
+const START_DELIMITER: &[u8] = b"<START>"; // Using "###" as start delimiter
+const END_DELIMITER: &[u8] = b"<END>"; // Using "$$$" as end delimiter
+
 pub struct SerialManager {
     port: Arc<Mutex<Option<Box<dyn SerialPort>>>>,
 }
@@ -50,17 +54,7 @@ impl SerialManager {
         payload.extend_from_slice(data);
 
         // Create proto message
-        let transmission = Transmission { payload };
-
-        let packet = Packet {
-            r#type: PacketType::Transmission as i32,
-            transmission: Some(transmission),
-            settings: None,
-            log: None,
-            request: None,
-            gps: None,
-            ack: false,
-        };
+        let packet = Packet::new_transmission(payload);
 
         // Encode packet
         let mut encoded = Vec::new();
@@ -68,16 +62,35 @@ impl SerialManager {
             .encode(&mut encoded)
             .map_err(|e| format!("Error encoding packet: {}", e))?;
 
+        // Properly frame the message with start and end delimiters
+        let mut framed_data =
+            Vec::with_capacity(START_DELIMITER.len() + 2 + encoded.len() + END_DELIMITER.len());
+
+        // Add start delimiter
+        framed_data.extend_from_slice(START_DELIMITER);
+
         // Add length prefix for framing (2 bytes, big endian)
         let len = encoded.len() as u16;
-        let mut framed_data = Vec::with_capacity(2 + encoded.len());
         framed_data.extend_from_slice(&len.to_be_bytes());
+
+        // Add encoded data
         framed_data.extend_from_slice(&encoded);
+
+        // Add end delimiter
+        framed_data.extend_from_slice(END_DELIMITER);
 
         // Write to serial port
         if let Some(port) = port_guard.as_mut() {
             port.write_all(&framed_data)
                 .map_err(|e| format!("Failed to write to serial port: {}", e))?;
+
+            // For debugging, print what we're sending
+            println!(
+                "Sent frame: ID=0x{:X}, data={:?}, total bytes={}",
+                can_id,
+                data,
+                framed_data.len()
+            );
 
             Ok(())
         } else {
