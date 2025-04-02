@@ -41,7 +41,7 @@ pub fn main_layout(
         ],
         bps_element,
         // Add Serial and LoRa section
-        // serial_element,
+        serial_element,
         // Add fault section
         fault_element
     ]
