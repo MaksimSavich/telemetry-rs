@@ -102,7 +102,6 @@ impl Application for TelemetryGui {
                             "BPS_ON_Time" => self.bps_ontime = val.parse().unwrap_or(0),
                             "BPS_State" => self.bps_state = val.to_string(),
                             _ => {
-                                println!("Speed signal: {}", self.speed_mph);
                                 // Check for fault signals
                                 if signal.starts_with("Fault_") {
                                     let fault_name = signal.to_string();
@@ -284,7 +283,7 @@ impl Application for TelemetryGui {
                     socket.set_nonblocking(false).unwrap();
                     loop {
                         if let Ok(frame) = socket.read_frame() {
-                            // println!("Received CAN frame: {:?}", frame);
+                            println!("Received CAN frame: {:?}", frame);
                             if let Some(decoded) = decoder.decode(frame.clone()) {
                                 return (Message::CanFrameReceived(decoded, frame), decoder);
                             }
