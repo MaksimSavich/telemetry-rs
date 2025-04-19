@@ -110,7 +110,7 @@ impl Application for TelemetryGui {
                                         && val.trim() != "0.0"
                                     {
                                         // If fault is newly active
-                                        println!("Fault detected {}", val);
+                                        // println!("Fault detected {}", val);
                                         if !self.active_faults.contains_key(&fault_name) {
                                             let new_fault = Fault {
                                                 name: fault_name.clone(),
@@ -118,11 +118,11 @@ impl Application for TelemetryGui {
                                                 is_active: true,
                                                 value: val.to_owned(),
                                             };
-                                            println!("Creating fault");
+                                            // println!("Creating fault");
                                             self.active_faults
                                                 .insert(fault_name.clone(), new_fault.clone());
                                             self.fault_history.push(new_fault);
-                                            println!("{}", self.active_faults.len());
+                                            // println!("{}", self.active_faults.len());
                                         }
                                     } else {
                                         // If fault is cleared
