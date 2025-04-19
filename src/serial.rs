@@ -74,7 +74,7 @@ impl SerialManager {
 
         // Properly frame the message with start and end delimiters
         let mut framed_data =
-            Vec::with_capacity(START_DELIMITER.len() + encoded.len() + END_DELIMITER.len());
+            Vec::with_capacity(START_DELIMITER.len() + 2 + encoded.len() + END_DELIMITER.len());
 
         // Add start delimiter
         framed_data.extend_from_slice(START_DELIMITER);
@@ -89,15 +89,28 @@ impl SerialManager {
 
         // Write to serial port
         if let Some(port) = port_guard.as_mut() {
+            // Flush before writing to ensure clean state
+            port.flush()
+                .map_err(|e| format!("Failed to flush serial port: {}", e))?;
+
             port.write_all(&framed_data)
                 .map_err(|e| format!("Failed to write to serial port: {}", e))?;
 
-            // For debugging
+            // Ensure data is sent by flushing again
+            port.flush()
+                .map_err(|e| format!("Failed to flush after write: {}", e))?;
+
+            // More detailed debugging
             println!(
-                "Sent frame: ID=0x{:X}, data={:?}, total bytes={}",
+                "Sent frame: ID=0x{:X}, data={:?}, framed_size={}, frame_bytes={:?}",
                 can_id,
                 data,
-                framed_data.len()
+                framed_data.len(),
+                framed_data
+                    .iter()
+                    .map(|b| format!("{:02X}", b))
+                    .collect::<Vec<_>>()
+                    .join(" ")
             );
 
             Ok(())
