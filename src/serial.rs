@@ -74,14 +74,14 @@ impl SerialManager {
 
         // Properly frame the message with start and end delimiters
         let mut framed_data =
-            Vec::with_capacity(START_DELIMITER.len() + 2 + encoded.len() + END_DELIMITER.len());
+            Vec::with_capacity(START_DELIMITER.len() + encoded.len() + END_DELIMITER.len());
 
         // Add start delimiter
         framed_data.extend_from_slice(START_DELIMITER);
 
-        // Add length prefix for framing (2 bytes, big endian)
-        let len = encoded.len() as u16;
-        framed_data.extend_from_slice(&len.to_be_bytes());
+        // // Add length prefix for framing (2 bytes, big endian)
+        // let len = encoded.len() as u16;
+        // framed_data.extend_from_slice(&len.to_be_bytes());
         framed_data.extend_from_slice(&encoded);
 
         // Add end delimiter
