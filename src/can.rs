@@ -21,7 +21,7 @@ impl CanDecoder {
             socketcan::Id::Extended(ext_id) => {
                 let full_id = ext_id.as_raw();
                 // Apply mask to strip EFF flag (0x1FFFFFFF) if needed
-                full_id & 0x1FFFFFFF
+                full_id
             }
         };
 
