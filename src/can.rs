@@ -41,7 +41,7 @@ impl CanDecoder {
         }
 
         let message = message.unwrap();
-        println!("  Found matching message: {}", message.name());
+        println!("  Found matching message: {}", message.message_id().raw());
 
         Some(
             message

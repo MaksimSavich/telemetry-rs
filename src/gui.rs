@@ -1,7 +1,7 @@
 use crate::can::CanDecoder;
 use crate::serial::SerialManager;
 use iced::{subscription, time, Application, Command, Element, Subscription, Theme};
-use socketcan::{CanSocket, EmbeddedFrame, Socket};
+use socketcan::{CanFrame, CanSocket, EmbeddedFrame, Socket, StandardId};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -349,19 +349,19 @@ impl Application for TelemetryGui {
                             eprintln!("Failed to open CAN socket: {}", e);
                             // Sleep and try again
                             tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                            // Create a dummy frame for the error case
+                            let dummy_frame = match CanFrame::new(
+                                socketcan::Id::Standard(StandardId::new(0).unwrap()),
+                                &[0; 8],
+                            ) {
+                                Some(frame) => frame,
+                                None => {
+                                    // If we can't even create a dummy frame, something is very wrong
+                                    panic!("Failed to create dummy CAN frame");
+                                }
+                            };
                             return (
-                                Message::CanFrameReceived(
-                                    "CAN Error".to_string(),
-                                    CanFrame::new(
-                                        socketcan::Id::Standard(
-                                            socketcan::StandardId::new(0).unwrap(),
-                                        ),
-                                        &[0; 8],
-                                        false,
-                                        false,
-                                    )
-                                    .unwrap(),
-                                ),
+                                Message::CanFrameReceived("CAN Error".to_string(), dummy_frame),
                                 decoder,
                             );
                         }
