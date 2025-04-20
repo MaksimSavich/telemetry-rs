@@ -114,7 +114,7 @@ impl Application for TelemetryGui {
                     if let Some((signal, val)) = line.split_once(": ") {
                         println!("  Signal: {}, Value: {}", signal, val);
                         match signal {
-                            "Actual_Current_A" => match val.parse::<f64>() {
+                            "Actual_Speed_RPM" => match val.parse::<f64>() {
                                 Ok(v) => self.speed_mph = v,
                                 Err(e) => println!("Failed to parse speed: {}", e),
                             },
