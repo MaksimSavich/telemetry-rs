@@ -116,6 +116,42 @@ BO_ 768 BMS_Faults: 4 Vector__XXX
  SG_ Fault_BMS_Internal_Conversion : 1|1@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Fault_BMS_Internal_Comms : 0|1@1+ (1,0) [0|0] "" Vector__XXX
 
+BO_ 1712 BMS_Status1: 8 Vector__XXX
+ SG_ BMS_Checksum1 : 56|8@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BMS_Relay_State : 40|16@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BMS_Pack_SOC : 32|8@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BMS_Pack_Instantaneous_Voltage_V : 16|16@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BMS_Pack_Current_A : 0|16@1+ (1,0) [0|0] "" Vector__XXX
+
+BO_ 1713 BMS_Status2: 8 Vector__XXX
+ SG_ BMS_Checksum2 : 56|8@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BMS_Pack_Low_Temperature_C : 40|8@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BMS_Pack_High_Temperature_C : 32|8@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BMS_Pack_DCL : 0|32@1+ (1,0) [0|0] "" Vector__XXX
+
+BO_ 2550589428 BMS_Status3: 8 Vector__XXX
+ SG_ BMS_Custom_Flag1 : 32|8@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BMS_Pack_CCL : 16|16@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BMS_Max_Pack_Voltage_V : 0|16@1+ (1,0) [0|0] "" Vector__XXX
+
+BO_ 2550588916 BMS_Status4: 8 Vector__XXX
+ SG_ BMS_Custom_Flag2 : 32|8@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BMS_Pack_CCL : 16|16@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BMS_Max_Cell_Voltage_V : 0|16@1+ (1,0) [0|0] "" Vector__XXX
+
+BO_ 2550589940 BMS_Status5: 8 Vector__XXX
+ SG_ BMS_Custom_Flag2 : 32|8@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BMS_Pack_CCL : 16|16@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BMS_Max_Cell_Voltage_V : 0|16@1+ (1,0) [0|0] "" Vector__XXX
+
+BO_ 2565160996 BMS_Thunderstruck: 8 Vector__XXX
+ SG_ BMS_Const_Val2 : 56|8@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BMS_Const_Val1 : 48|8@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BMS_Pack_SOC : 40|8@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BMS_Pack_CCL : 24|16@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BMS_Max_Pack_Voltage_V : 8|16@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ Custom_Flag1 : 0|8@1+ (1,0) [0|0] "" Vector__XXX
+
 
 
 
@@ -133,6 +169,12 @@ BA_ "GenMsgCycleTime" BO_ 1911 100;
 BA_ "GenMsgCycleTime" BO_ 768 100;
 BA_ "SystemSignalLongSymbol" SG_ 768 Fault_BMS_Discharge_Limit_Reinfo "Fault_BMS_Discharge_Limit_Reinforcement";
 BA_ "SystemSignalLongSymbol" SG_ 768 Fault_BMS_Charge_Limit_Reinforce "Fault_BMS_Charge_Limit_Reinforcement";
+BA_ "GenMsgCycleTime" BO_ 1712 100;
+BA_ "GenMsgCycleTime" BO_ 1713 100;
+BA_ "GenMsgCycleTime" BO_ 2550589428 50;
+BA_ "GenMsgCycleTime" BO_ 2550588916 50;
+BA_ "GenMsgCycleTime" BO_ 2550589940 50;
+BA_ "GenMsgCycleTime" BO_ 2565160996 50;
 VAL_ 2364612101 Fault_MC_ERR15 0 "OK" 1 "Hall Galvanometer sensor" ;
 VAL_ 2364612101 Fault_MC_ERR14 0 "OK" 1 "Motor over-temperature" ;
 VAL_ 2364612101 Fault_MC_ERR13 0 "OK" 1 "Reserved" ;
