@@ -117,7 +117,7 @@ impl Application for TelemetryGui {
                             "Actual_Speed_RPM" => match val.parse::<f64>() {
                                 Ok(v) => {
                                     self.speed_mph =
-                                        (v * 21.7 * std::f64::consts::PI * 60.0) / 63360.0
+                                        (v * 21.25 * std::f64::consts::PI * 60.0) / 63360.0
                                 }
                                 Err(e) => println!("Failed to parse speed: {}", e),
                             },
