@@ -93,7 +93,7 @@ impl Application for TelemetryGui {
                 for line in decoded_str.lines() {
                     if let Some((signal, val)) = line.split_once(": ") {
                         match signal {
-                            "Actual_Speed_RPM" => self.speed_mph = val.parse().unwrap_or(0.0),
+                            "Battery_Voltage_V" => self.speed_mph = val.parse().unwrap_or(0.0),
                             "Direction" => self.direction = val.to_string(),
                             "BPS_Voltage_V" => self.battery_voltage = val.parse().unwrap_or(0.0),
                             "BPS_Current_A" => self.battery_current = val.parse().unwrap_or(0.0),
@@ -283,7 +283,7 @@ impl Application for TelemetryGui {
                     socket.set_nonblocking(false).unwrap();
                     loop {
                         if let Ok(frame) = socket.read_frame() {
-                            println!("Received CAN frame: {:?}", frame);
+                            // println!("Received CAN frame: {:?}", frame);
                             if let Some(decoded) = decoder.decode(frame.clone()) {
                                 return (Message::CanFrameReceived(decoded, frame), decoder);
                             }
