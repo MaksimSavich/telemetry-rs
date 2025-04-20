@@ -15,14 +15,10 @@ impl CanDecoder {
     }
 
     pub fn decode(&self, frame: CanFrame) -> Option<String> {
-        // Handle Extended ID properly by stripping EFF flag
+        // Get the raw ID without any modification first
         let raw_id = match frame.id() {
             socketcan::Id::Standard(std_id) => std_id.as_raw() as u32,
-            socketcan::Id::Extended(ext_id) => {
-                let full_id = ext_id.as_raw();
-                // Apply mask to strip EFF flag (0x1FFFFFFF) if needed
-                full_id
-            }
+            socketcan::Id::Extended(ext_id) => ext_id.as_raw(),
         };
 
         // Add debug logging
@@ -32,25 +28,122 @@ impl CanDecoder {
             frame.data()
         );
 
-        // Iterate through all messages to find match
-        let message = self.dbc.messages().iter().find(|m| {
+        // Print all messages in the DBC for debugging
+        println!("Looking for ID 0x{:X} in DBC:", raw_id);
+        let mut closest_id = None;
+        let mut min_diff = u32::MAX;
+
+        // First, check for exact match with raw_id
+        let exact_match = self.dbc.messages().iter().find(|m| {
             let msg_id = m.message_id().raw();
-            // Print the ID being compared to help debug
-            println!("  Checking against DBC message ID: 0x{:X}", msg_id);
+            println!("  DBC message ID: 0x{:X}", msg_id);
+
+            // Find the closest ID for fallback
+            let diff = if msg_id > raw_id {
+                msg_id - raw_id
+            } else {
+                raw_id - msg_id
+            };
+            if diff < min_diff {
+                min_diff = diff;
+                closest_id = Some(msg_id);
+            }
+
             msg_id == raw_id
         });
 
-        if message.is_none() {
-            println!("  No matching message found in DBC for ID: 0x{:X}", raw_id);
-            return None;
+        if let Some(message) = exact_match {
+            println!("  Found exact match: 0x{:X}", message.message_id().raw());
+            return self.decode_message(message, frame);
         }
 
-        let message = message.unwrap();
+        // Try with 11-bit ID (masked with 0x7FF for standard IDs)
+        let standard_id = raw_id & 0x7FF;
+        let standard_match = self.dbc.messages().iter().find(|m| {
+            let msg_id = m.message_id().raw();
+            msg_id == standard_id
+        });
+
+        if let Some(message) = standard_match {
+            println!(
+                "  Found standard ID match: 0x{:X}",
+                message.message_id().raw()
+            );
+            return self.decode_message(message, frame);
+        }
+
+        // Try with 29-bit ID (masked with 0x1FFFFFFF for extended IDs)
+        let extended_id = raw_id & 0x1FFFFFFF;
+        let extended_match = self.dbc.messages().iter().find(|m| {
+            let msg_id = m.message_id().raw();
+            msg_id == extended_id
+        });
+
+        if let Some(message) = extended_match {
+            println!(
+                "  Found extended ID match: 0x{:X}",
+                message.message_id().raw()
+            );
+            return self.decode_message(message, frame);
+        }
+
+        // Check if the DBC might have extended flag set (0x80000000) that we need to add
+        let flag_extended_id = raw_id | 0x80000000;
+        let flag_match = self.dbc.messages().iter().find(|m| {
+            let msg_id = m.message_id().raw();
+            msg_id == flag_extended_id
+        });
+
+        if let Some(message) = flag_match {
+            println!(
+                "  Found extended flag match: 0x{:X}",
+                message.message_id().raw()
+            );
+            return self.decode_message(message, frame);
+        }
+
+        // One more try for MotorController messages specifically - look for the right message pattern
+        if (raw_id & 0xFFFFFF00) == 0x8CF11E00 || (raw_id & 0x1FFFFFFF) == 0x0CF11E05 {
+            let mc_match = self.dbc.messages().iter().find(|m| {
+                let msg_id = m.message_id().raw();
+                msg_id == 0x8CF11E05 || msg_id == 217128453
+            });
+
+            if let Some(message) = mc_match {
+                println!(
+                    "  Found MotorController match: 0x{:X}",
+                    message.message_id().raw()
+                );
+                return self.decode_message(message, frame);
+            }
+        }
+
+        if (raw_id & 0xFFFFFF00) == 0x8CF11F00 || (raw_id & 0x1FFFFFFF) == 0x0CF11F05 {
+            let mc_match = self.dbc.messages().iter().find(|m| {
+                let msg_id = m.message_id().raw();
+                msg_id == 0x8CF11F05 || msg_id == 217128709
+            });
+
+            if let Some(message) = mc_match {
+                println!(
+                    "  Found MotorController match: 0x{:X}",
+                    message.message_id().raw()
+                );
+                return self.decode_message(message, frame);
+            }
+        }
+
+        println!("  No matching message found in DBC for ID: 0x{:X}", raw_id);
         println!(
-            "  Found matching message: 0x{:X}",
-            message.message_id().raw()
+            "  Closest ID was: 0x{:X} (diff: {})",
+            closest_id.unwrap_or(0),
+            min_diff
         );
 
+        None
+    }
+
+    fn decode_message(&self, message: &can_dbc::Message, frame: CanFrame) -> Option<String> {
         Some(
             message
                 .signals()
