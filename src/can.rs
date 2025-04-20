@@ -15,9 +15,14 @@ impl CanDecoder {
     }
 
     pub fn decode(&self, frame: CanFrame) -> Option<String> {
+        // Handle Extended ID properly by stripping EFF flag
         let raw_id = match frame.id() {
             socketcan::Id::Standard(std_id) => std_id.as_raw() as u32,
-            socketcan::Id::Extended(ext_id) => ext_id.as_raw(),
+            socketcan::Id::Extended(ext_id) => {
+                let full_id = ext_id.as_raw();
+                // Apply mask to strip EFF flag (0x1FFFFFFF) if needed
+                full_id & 0x1FFFFFFF
+            }
         };
 
         // Add debug logging
@@ -27,7 +32,7 @@ impl CanDecoder {
             frame.data()
         );
 
-        // Iterate through all messages to find match - be more lenient with matching
+        // Iterate through all messages to find match
         let message = self.dbc.messages().iter().find(|m| {
             let msg_id = m.message_id().raw();
             // Print the ID being compared to help debug
@@ -41,7 +46,10 @@ impl CanDecoder {
         }
 
         let message = message.unwrap();
-        println!("  Found matching message: {}", message.message_id().raw());
+        println!(
+            "  Found matching message: 0x{:X}",
+            message.message_id().raw()
+        );
 
         Some(
             message
@@ -49,7 +57,10 @@ impl CanDecoder {
                 .iter()
                 .fold(String::new(), |mut acc, signal| {
                     let raw_value = {
-                        let data = frame.data().to_vec();
+                        // Re-add the data array reversal that was necessary for correct decoding
+                        let mut data_array = frame.data().to_vec();
+                        data_array.reverse(); // Re-add the reversal for your specific CAN implementation
+
                         let start_bit = *signal.start_bit() as usize;
                         let size = *signal.signal_size() as usize;
 
@@ -59,7 +70,7 @@ impl CanDecoder {
                             can_dbc::ByteOrder::BigEndian => false,
                         };
 
-                        self.extract_signal_value(&data, start_bit, size, is_intel)
+                        self.extract_signal_value(&data_array, start_bit, size, is_intel)
                     };
 
                     // Scale raw value to engineering value
@@ -103,11 +114,7 @@ impl CanDecoder {
     ) -> u64 {
         let mut value = 0u64;
 
-        // Make a copy of data to ensure we don't modify the original
-        let data_copy = data.to_vec();
-
-        // DO NOT reverse the entire array - this was causing issues
-        // Instead, handle endianness correctly in the bit extraction
+        // Note: data is already reversed before being passed to this function
 
         if is_intel {
             // Intel format (little-endian)
@@ -116,8 +123,8 @@ impl CanDecoder {
                 let bit_index = (start_bit + i) % 8;
 
                 // Make sure we don't go out of bounds
-                if byte_index < data_copy.len() {
-                    if (data_copy[byte_index] & (1 << bit_index)) != 0 {
+                if byte_index < data.len() {
+                    if (data[byte_index] & (1 << bit_index)) != 0 {
                         value |= 1 << i;
                     }
                 }
@@ -134,8 +141,8 @@ impl CanDecoder {
                 let current_bit_in_byte = 7 - ((bit_index - i) % 8);
 
                 // Make sure we don't go out of bounds
-                if current_byte < data_copy.len() {
-                    if (data_copy[current_byte] & (1 << current_bit_in_byte)) != 0 {
+                if current_byte < data.len() {
+                    if (data[current_byte] & (1 << current_bit_in_byte)) != 0 {
                         value |= 1 << (size - 1 - i);
                     }
                 }
