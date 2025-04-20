@@ -3,6 +3,8 @@ use crate::serial::SerialManager;
 use iced::{subscription, time, Application, Command, Element, Subscription, Theme};
 use socketcan::{CanSocket, EmbeddedFrame, Socket};
 use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::thread;
 
 use crate::gui_modules::*;
 
@@ -34,6 +36,9 @@ pub struct TelemetryGui {
     // Fault panel state
     fault_panel_expanded: bool,
     current_fault_index: usize,
+
+    // Serial status for thread communication
+    serial_status_shared: Arc<Mutex<String>>,
 }
 
 impl Application for TelemetryGui {
@@ -77,6 +82,9 @@ impl Application for TelemetryGui {
                 // Fault panel state
                 fault_panel_expanded: false,
                 current_fault_index: 0,
+
+                // Thread communication
+                serial_status_shared: Arc::new(Mutex::new("Disconnected".into())),
             },
             Command::none(),
         )
@@ -89,17 +97,48 @@ impl Application for TelemetryGui {
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::CanFrameReceived(decoded_str, frame) => {
+                // Print frame for debugging
+                let raw_id = match frame.id() {
+                    socketcan::Id::Standard(std_id) => std_id.as_raw() as u32,
+                    socketcan::Id::Extended(ext_id) => ext_id.as_raw(),
+                };
+
+                println!(
+                    "Processing frame: ID=0x{:X}, Data={:?}",
+                    raw_id,
+                    frame.data()
+                );
+
                 // Process telemetry data
                 for line in decoded_str.lines() {
                     if let Some((signal, val)) = line.split_once(": ") {
+                        println!("  Signal: {}, Value: {}", signal, val);
                         match signal {
-                            "Battery_Voltage_V" => self.speed_mph = val.parse().unwrap_or(0.0),
+                            "Actual_Speed_RPM" => match val.parse::<f64>() {
+                                Ok(v) => self.speed_mph = v,
+                                Err(e) => println!("Failed to parse speed: {}", e),
+                            },
                             "Direction" => self.direction = val.to_string(),
-                            "BPS_Voltage_V" => self.battery_voltage = val.parse().unwrap_or(0.0),
-                            "BPS_Current_A" => self.battery_current = val.parse().unwrap_or(0.0),
-                            "Charge_Level" => self.battery_charge = val.parse().unwrap_or(0.0),
-                            "Supp_Temperature_C" => self.battery_temp = val.parse().unwrap_or(0.0),
-                            "BPS_ON_Time" => self.bps_ontime = val.parse().unwrap_or(0),
+                            "BPS_Voltage_V" => match val.parse::<f64>() {
+                                Ok(v) => self.battery_voltage = v,
+                                Err(e) => println!("Failed to parse voltage: {}", e),
+                            },
+                            "BPS_Current_A" => match val.parse::<f64>() {
+                                Ok(v) => self.battery_current = v,
+                                Err(e) => println!("Failed to parse current: {}", e),
+                            },
+                            "Charge_Level" => match val.parse::<f64>() {
+                                Ok(v) => self.battery_charge = v,
+                                Err(e) => println!("Failed to parse charge: {}", e),
+                            },
+                            "Supp_Temperature_C" => match val.parse::<f64>() {
+                                Ok(v) => self.battery_temp = v,
+                                Err(e) => println!("Failed to parse temperature: {}", e),
+                            },
+                            "BPS_ON_Time" => match val.parse::<u64>() {
+                                Ok(v) => self.bps_ontime = v,
+                                Err(e) => println!("Failed to parse BPS on time: {}", e),
+                            },
                             "BPS_State" => self.bps_state = val.to_string(),
                             _ => {
                                 // Check for fault signals
@@ -110,7 +149,7 @@ impl Application for TelemetryGui {
                                         && val.trim() != "0.0"
                                     {
                                         // If fault is newly active
-                                        // println!("Fault detected {}", val);
+                                        println!("Fault detected: {} = {}", fault_name, val);
                                         if !self.active_faults.contains_key(&fault_name) {
                                             let new_fault = Fault {
                                                 name: fault_name.clone(),
@@ -118,11 +157,11 @@ impl Application for TelemetryGui {
                                                 is_active: true,
                                                 value: val.to_owned(),
                                             };
-                                            // println!("Creating fault");
+                                            println!("Creating new fault entry");
                                             self.active_faults
                                                 .insert(fault_name.clone(), new_fault.clone());
                                             self.fault_history.push(new_fault);
-                                            // println!("{}", self.active_faults.len());
+                                            println!("Active faults: {}", self.active_faults.len());
                                         }
                                     } else {
                                         // If fault is cleared
@@ -137,21 +176,34 @@ impl Application for TelemetryGui {
                     }
                 }
 
-                // If LoRa transmission is enabled, send the CAN frame
+                // If LoRa transmission is enabled, send the CAN frame in a non-blocking way
                 if self.lora_enabled {
-                    // Extract frame data
-                    let raw_id = match frame.id() {
-                        socketcan::Id::Standard(std_id) => std_id.as_raw() as u32,
-                        socketcan::Id::Extended(ext_id) => ext_id.as_raw(),
-                    };
+                    // Clone what we need for the thread
+                    let serial_manager = self.serial_manager.clone();
+                    let frame_data = frame.data().to_vec();
+                    let frame_id = raw_id;
+                    let status_shared = Arc::clone(&self.serial_status_shared);
 
-                    // Send via serial
-                    if let Err(e) = self.serial_manager.send_can_frame(raw_id, frame.data()) {
-                        println!("Failed to send CAN frame over serial: {}", e);
-                        self.serial_status = format!("Error: {}", e);
-                    } else {
-                        // Successfully sent
-                        self.serial_status = format!("Sent: ID 0x{:X}", raw_id);
+                    // Spawn a thread to handle serial sending
+                    thread::spawn(move || {
+                        if let Err(e) = serial_manager.send_can_frame(frame_id, &frame_data) {
+                            println!("Failed to send CAN frame over serial: {}", e);
+
+                            // Update status
+                            if let Ok(mut status) = status_shared.lock() {
+                                *status = format!("Error: {}", e);
+                            }
+                        } else {
+                            // Successfully sent
+                            if let Ok(mut status) = status_shared.lock() {
+                                *status = format!("Sent: ID 0x{:X}", frame_id);
+                            }
+                        }
+                    });
+
+                    // Update our status from the shared status
+                    if let Ok(status) = self.serial_status_shared.lock() {
+                        self.serial_status = status.clone();
                     }
                 }
             }
@@ -197,10 +249,18 @@ impl Application for TelemetryGui {
                 if let Some(port) = &self.selected_port {
                     match self.serial_manager.connect(port, 115200) {
                         Ok(_) => {
-                            self.serial_status = format!("Connected to {}", port);
+                            let status = format!("Connected to {}", port);
+                            self.serial_status = status.clone();
+                            if let Ok(mut shared) = self.serial_status_shared.lock() {
+                                *shared = status;
+                            }
                         }
                         Err(e) => {
-                            self.serial_status = format!("Error: {}", e);
+                            let status = format!("Error: {}", e);
+                            self.serial_status = status.clone();
+                            if let Ok(mut shared) = self.serial_status_shared.lock() {
+                                *shared = status;
+                            }
                         }
                     }
                 }
@@ -208,11 +268,15 @@ impl Application for TelemetryGui {
 
             Message::ToggleLoRa => {
                 self.lora_enabled = !self.lora_enabled;
-                self.serial_status = if self.lora_enabled {
+                let status = if self.lora_enabled {
                     "LoRa transmission enabled".to_string()
                 } else {
                     "LoRa transmission disabled".to_string()
                 };
+                self.serial_status = status.clone();
+                if let Ok(mut shared) = self.serial_status_shared.lock() {
+                    *shared = status;
+                }
             }
         }
         Command::none()
@@ -275,20 +339,59 @@ impl Application for TelemetryGui {
     fn subscription(&self) -> Subscription<Message> {
         // Combine subscriptions
         Subscription::batch(vec![
-            // Original CAN subscription
+            // Improved CAN subscription
             {
                 let decoder = self.decoder.clone();
                 subscription::unfold("can_subscription", decoder, |decoder| async {
-                    let socket = CanSocket::open("can0").expect("CAN socket failed");
-                    socket.set_nonblocking(false).unwrap();
+                    let socket = match CanSocket::open("can0") {
+                        Ok(s) => s,
+                        Err(e) => {
+                            eprintln!("Failed to open CAN socket: {}", e);
+                            // Sleep and try again
+                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                            return (
+                                Message::CanFrameReceived(
+                                    "CAN Error".to_string(),
+                                    CanFrame::new(
+                                        socketcan::Id::Standard(
+                                            socketcan::StandardId::new(0).unwrap(),
+                                        ),
+                                        &[0; 8],
+                                        false,
+                                        false,
+                                    )
+                                    .unwrap(),
+                                ),
+                                decoder,
+                            );
+                        }
+                    };
+
+                    // Set non-blocking mode
+                    if let Err(e) = socket.set_nonblocking(true) {
+                        eprintln!("Failed to set non-blocking mode: {}", e);
+                    }
+
                     loop {
-                        if let Ok(frame) = socket.read_frame() {
-                            // println!("Received CAN frame: {:?}", frame);
-                            if let Some(decoded) = decoder.decode(frame.clone()) {
+                        match socket.read_frame() {
+                            Ok(frame) => {
+                                println!("Received CAN frame: {:?}", frame);
+                                // Always pass the frame along, even if decoding fails
+                                let decoded = decoder
+                                    .decode(frame.clone())
+                                    .unwrap_or_else(|| format!("Failed to decode: {:?}", frame));
                                 return (Message::CanFrameReceived(decoded, frame), decoder);
                             }
+                            Err(e) => {
+                                if e.kind() == std::io::ErrorKind::WouldBlock {
+                                    // No data available, just sleep briefly
+                                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                                } else {
+                                    eprintln!("CAN read error: {}", e);
+                                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                                }
+                            }
                         }
-                        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                     }
                 })
             },

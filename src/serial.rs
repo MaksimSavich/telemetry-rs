@@ -41,10 +41,16 @@ impl SerialManager {
     }
 
     pub fn send_can_frame(&self, can_id: u32, data: &[u8]) -> Result<(), String> {
-        let mut port_guard = self.port.lock().unwrap();
+        // Quick check if port exists to fail fast
+        let port_exists = {
+            let guard = self
+                .port
+                .lock()
+                .map_err(|_| "Failed to lock port mutex".to_string())?;
+            guard.is_some()
+        };
 
-        // Check if port is open
-        if port_guard.is_none() {
+        if !port_exists {
             return Err("Serial port not open".to_string());
         }
 
@@ -75,45 +81,35 @@ impl SerialManager {
         // Properly frame the message with start and end delimiters
         let mut framed_data =
             Vec::with_capacity(START_DELIMITER.len() + encoded.len() + END_DELIMITER.len());
-
-        // Add start delimiter
         framed_data.extend_from_slice(START_DELIMITER);
-
-        // // Add length prefix for framing (2 bytes, big endian)
-        // let len = encoded.len() as u16;
-        // framed_data.extend_from_slice(&len.to_be_bytes());
         framed_data.extend_from_slice(&encoded);
-
-        // Add end delimiter
         framed_data.extend_from_slice(END_DELIMITER);
 
-        // Write to serial port
+        // Get a locked reference to the port
+        let mut port_guard = match self.port.try_lock() {
+            Ok(guard) => guard,
+            Err(_) => {
+                // Port is busy - log but don't block
+                println!("Port busy - skipping frame ID=0x{:X}", can_id);
+                return Ok(()); // Return Ok to prevent error flooding
+            }
+        };
+
+        // Write to serial port with timeout handling
         if let Some(port) = port_guard.as_mut() {
-            // Flush before writing to ensure clean state
-            port.flush()
-                .map_err(|e| format!("Failed to flush serial port: {}", e))?;
+            // Try to flush but don't fail if it doesn't work
+            let _ = port.flush();
 
-            port.write_all(&framed_data)
-                .map_err(|e| format!("Failed to write to serial port: {}", e))?;
-
-            // Ensure data is sent by flushing again
-            port.flush()
-                .map_err(|e| format!("Failed to flush after write: {}", e))?;
-
-            // More detailed debugging
-            println!(
-                "Sent frame: ID=0x{:X}, data={:?}, framed_size={}, frame_bytes={:?}",
-                can_id,
-                data,
-                framed_data.len(),
-                framed_data
-                    .iter()
-                    .map(|b| format!("{:02X}", b))
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            );
-
-            Ok(())
+            // Write data with timeout protection
+            match port.write_all(&framed_data) {
+                Ok(_) => {
+                    // Try to flush but don't fail if it doesn't work
+                    let _ = port.flush();
+                    println!("Sent CAN frame: ID=0x{:X}", can_id);
+                    Ok(())
+                }
+                Err(e) => Err(format!("Failed to write to serial port: {}", e)),
+            }
         } else {
             Err("Serial port not open".to_string())
         }

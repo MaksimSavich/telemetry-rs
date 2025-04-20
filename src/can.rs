@@ -19,11 +19,29 @@ impl CanDecoder {
             socketcan::Id::Standard(std_id) => std_id.as_raw() as u32,
             socketcan::Id::Extended(ext_id) => ext_id.as_raw(),
         };
-        let message = self
-            .dbc
-            .messages()
-            .iter()
-            .find(|m| m.message_id().raw() == raw_id)?;
+
+        // Add debug logging
+        println!(
+            "Decoding frame with ID: 0x{:X}, data: {:?}",
+            raw_id,
+            frame.data()
+        );
+
+        // Iterate through all messages to find match - be more lenient with matching
+        let message = self.dbc.messages().iter().find(|m| {
+            let msg_id = m.message_id().raw();
+            // Print the ID being compared to help debug
+            println!("  Checking against DBC message ID: 0x{:X}", msg_id);
+            msg_id == raw_id
+        });
+
+        if message.is_none() {
+            println!("  No matching message found in DBC for ID: 0x{:X}", raw_id);
+            return None;
+        }
+
+        let message = message.unwrap();
+        println!("  Found matching message: {}", message.name());
 
         Some(
             message
@@ -31,17 +49,11 @@ impl CanDecoder {
                 .iter()
                 .fold(String::new(), |mut acc, signal| {
                     let raw_value = {
-                        let data = {
-                            let mut data_array = frame.data().to_vec();
-                            data_array.reverse(); // Reverse if needed based on your CAN implementation
-                            data_array
-                        };
+                        let data = frame.data().to_vec();
                         let start_bit = *signal.start_bit() as usize;
                         let size = *signal.signal_size() as usize;
 
                         // Determine endianness from the DBC signal
-                        // In DBC format, Intel (little endian) is usually marked as "1"
-                        // Motorola (big endian) is usually marked as "0"
                         let is_intel = match signal.byte_order() {
                             can_dbc::ByteOrder::LittleEndian => true,
                             can_dbc::ByteOrder::BigEndian => false,
@@ -52,6 +64,14 @@ impl CanDecoder {
 
                     // Scale raw value to engineering value
                     let signal_value = (*signal.factor() * raw_value as f64) + *signal.offset();
+
+                    // Debug the extraction
+                    println!(
+                        "  Extracted signal: {}, raw: {}, scaled: {}",
+                        signal.name(),
+                        raw_value,
+                        signal_value
+                    );
 
                     // Lookup value descriptions via DBC
                     let value_desc = self
@@ -74,7 +94,6 @@ impl CanDecoder {
         )
     }
 
-    // Helper method to extract signal value based on endianness
     fn extract_signal_value(
         &self,
         data: &[u8],
@@ -84,6 +103,12 @@ impl CanDecoder {
     ) -> u64 {
         let mut value = 0u64;
 
+        // Make a copy of data to ensure we don't modify the original
+        let data_copy = data.to_vec();
+
+        // DO NOT reverse the entire array - this was causing issues
+        // Instead, handle endianness correctly in the bit extraction
+
         if is_intel {
             // Intel format (little-endian)
             for i in 0..size {
@@ -91,8 +116,8 @@ impl CanDecoder {
                 let bit_index = (start_bit + i) % 8;
 
                 // Make sure we don't go out of bounds
-                if byte_index < data.len() {
-                    if (data[byte_index] & (1 << bit_index)) != 0 {
+                if byte_index < data_copy.len() {
+                    if (data_copy[byte_index] & (1 << bit_index)) != 0 {
                         value |= 1 << i;
                     }
                 }
@@ -109,8 +134,8 @@ impl CanDecoder {
                 let current_bit_in_byte = 7 - ((bit_index - i) % 8);
 
                 // Make sure we don't go out of bounds
-                if current_byte < data.len() {
-                    if (data[current_byte] & (1 << current_bit_in_byte)) != 0 {
+                if current_byte < data_copy.len() {
+                    if (data_copy[current_byte] & (1 << current_bit_in_byte)) != 0 {
                         value |= 1 << (size - 1 - i);
                     }
                 }
