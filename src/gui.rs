@@ -59,7 +59,7 @@ impl Application for TelemetryGui {
             Self {
                 latest_fault: None,
                 direction: "Neutral".into(),
-                fullscreen: false,
+                fullscreen: true,
                 speed_mph: 0.0,
                 battery_voltage: 0.0,
                 battery_current: 0.0,
