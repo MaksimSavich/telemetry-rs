@@ -86,9 +86,8 @@ impl Application for TelemetryGui {
                 // Thread communication
                 serial_status_shared: Arc::new(Mutex::new("Disconnected".into())),
             },
-            Command::none(),
-        );
-        iced::window::Mode::Fullscreen
+            iced::window::change_mode(iced::window::Id::MAIN, iced::window::Mode::Fullscreen),
+        )
     }
 
     fn title(&self) -> String {
