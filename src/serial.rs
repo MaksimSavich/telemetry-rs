@@ -265,7 +265,7 @@ impl SerialManager {
                             conn.modem_type = modem_type.clone();
 
                             stat.connected = true;
-                            stat.port_name = Some(port_name);
+                            stat.port_name = Some(port_name.clone());
                             stat.last_success = Some(Instant::now());
                             stat.error_message = None;
 
@@ -339,7 +339,7 @@ impl SerialManager {
     }
 
     // Verify an RFD connection (just checks port is open at the correct baud rate)
-    fn verify_rfd_connection(port: &mut Box<dyn SerialPort>) -> Result<(), String> {
+    fn verify_rfd_connection(_port: &mut Box<dyn SerialPort>) -> Result<(), String> {
         // For RFD, we'll assume success if the port opens successfully at the right baud rate
         // We could add more verification if needed
         Ok(())

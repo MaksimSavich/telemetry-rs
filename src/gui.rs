@@ -1,10 +1,8 @@
 use crate::can::CanDecoder;
-use crate::serial::{ModemStatus, ModemType, SerialManager};
+use crate::serial::{ModemType, SerialManager};
 use iced::{subscription, time, Application, Command, Element, Subscription, Theme};
 use socketcan::{CanFrame, CanSocket, EmbeddedFrame, Socket, StandardId};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::thread;
 
 use crate::gui_modules::*;
 

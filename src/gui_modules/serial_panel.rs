@@ -1,5 +1,6 @@
 use crate::gui_modules::Message;
 use crate::serial::ModemType;
+use iced::widget::container::StyleSheet;
 use iced::widget::{button, column, container, pick_list, row, text};
 use iced::{Alignment, Element, Length};
 
@@ -29,7 +30,7 @@ pub fn serial_panel(config: &SerialConfig) -> Element<'static, Message> {
             pick_list(
                 config.available_ports.clone(),
                 config.lora_selected_port.clone(),
-                |port| Message::PortSelected(ModemType::Lora, port)
+                |port: String| Message::PortSelected(ModemType::Lora, port)
             )
             .width(Length::FillPortion(3))
         ]
@@ -66,7 +67,7 @@ pub fn serial_panel(config: &SerialConfig) -> Element<'static, Message> {
             pick_list(
                 config.available_ports.clone(),
                 config.rfd_selected_port.clone(),
-                |port| Message::PortSelected(ModemType::Rfd900x, port)
+                |port: String| Message::PortSelected(ModemType::Rfd900x, port)
             )
             .width(Length::FillPortion(3))
         ]
@@ -122,14 +123,14 @@ pub fn modem_status_indicators(
     )
     .padding(4)
     .style(if lora_connected {
-        iced::theme::Container::Custom(Box::new(|theme| {
+        iced::theme::Container::Custom(Box::new(|theme: &iced::Theme| {
             let mut appearance = theme.appearance(&iced::theme::Container::Box);
             appearance.background = Some(iced::Color::from_rgb(0.0, 0.8, 0.0).into());
             appearance.text_color = Some(iced::Color::WHITE);
             appearance
         }))
     } else {
-        iced::theme::Container::Custom(Box::new(|theme| {
+        iced::theme::Container::Custom(Box::new(|theme: &iced::Theme| {
             let mut appearance = theme.appearance(&iced::theme::Container::Box);
             appearance.background = Some(iced::Color::from_rgb(0.8, 0.0, 0.0).into());
             appearance.text_color = Some(iced::Color::WHITE);
@@ -147,14 +148,14 @@ pub fn modem_status_indicators(
     )
     .padding(4)
     .style(if rfd_connected {
-        iced::theme::Container::Custom(Box::new(|theme| {
+        iced::theme::Container::Custom(Box::new(|theme: &iced::Theme| {
             let mut appearance = theme.appearance(&iced::theme::Container::Box);
             appearance.background = Some(iced::Color::from_rgb(0.0, 0.8, 0.0).into());
             appearance.text_color = Some(iced::Color::WHITE);
             appearance
         }))
     } else {
-        iced::theme::Container::Custom(Box::new(|theme| {
+        iced::theme::Container::Custom(Box::new(|theme: &iced::Theme| {
             let mut appearance = theme.appearance(&iced::theme::Container::Box);
             appearance.background = Some(iced::Color::from_rgb(0.8, 0.0, 0.0).into());
             appearance.text_color = Some(iced::Color::WHITE);

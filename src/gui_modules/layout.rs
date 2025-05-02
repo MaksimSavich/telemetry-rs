@@ -20,6 +20,7 @@ pub fn fullscreen_button(is_fullscreen: bool) -> Element<'static, Message> {
 // Combine all parts into the main layout
 pub fn main_layout(
     is_fullscreen: bool,
+    modem_status_element: Element<'static, Message>,
     direction_element: Element<'static, Message>,
     speed_element: Element<'static, Message>,
     status_element: Element<'static, Message>,
@@ -29,8 +30,8 @@ pub fn main_layout(
     fault_element: Element<'static, Message>,
 ) -> Element<'static, Message> {
     column![
-        // Top row for fullscreen button
-        fullscreen_button(is_fullscreen),
+        // Top row with fullscreen button and modem status
+        row![fullscreen_button(is_fullscreen), modem_status_element],
         // Direction text
         direction_element,
         // Status, speed and battery info
