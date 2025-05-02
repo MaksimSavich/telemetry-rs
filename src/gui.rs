@@ -1,5 +1,5 @@
 use crate::can::CanDecoder;
-use crate::serial::SerialManager;
+use crate::serial::{ModemStatus, ModemType, SerialManager};
 use iced::{subscription, time, Application, Command, Element, Subscription, Theme};
 use socketcan::{CanFrame, CanSocket, EmbeddedFrame, Socket, StandardId};
 use std::collections::HashMap;
@@ -27,18 +27,22 @@ pub struct TelemetryGui {
     // Serial communication
     serial_manager: SerialManager,
     available_ports: Vec<String>,
-    selected_port: Option<String>,
-    serial_status: String,
 
-    // LoRa enabled flag
+    // LoRa configuration
+    lora_selected_port: Option<String>,
+    lora_status: String,
+    lora_connected: bool,
     lora_enabled: bool,
+
+    // RFD configuration
+    rfd_selected_port: Option<String>,
+    rfd_status: String,
+    rfd_connected: bool,
+    rfd_enabled: bool,
 
     // Fault panel state
     fault_panel_expanded: bool,
     current_fault_index: usize,
-
-    // Serial status for thread communication
-    serial_status_shared: Arc<Mutex<String>>,
 }
 
 impl Application for TelemetryGui {
@@ -54,6 +58,12 @@ impl Application for TelemetryGui {
     fn new(_flags: ()) -> (Self, Command<Message>) {
         let serial_manager = SerialManager::new();
         let available_ports = SerialManager::list_available_ports();
+
+        // Start the background scanning for modems
+        let mut sm = serial_manager.clone();
+        if let Err(e) = sm.start_background_scanning() {
+            println!("Failed to start background scanning: {}", e);
+        }
 
         (
             Self {
@@ -75,16 +85,22 @@ impl Application for TelemetryGui {
                 // Serial management
                 serial_manager,
                 available_ports,
-                selected_port: None,
-                serial_status: "Disconnected".into(),
+
+                // LoRa configuration
+                lora_selected_port: None,
+                lora_status: "Disconnected".into(),
+                lora_connected: false,
                 lora_enabled: false,
+
+                // RFD configuration
+                rfd_selected_port: None,
+                rfd_status: "Disconnected".into(),
+                rfd_connected: false,
+                rfd_enabled: false,
 
                 // Fault panel state
                 fault_panel_expanded: false,
                 current_fault_index: 0,
-
-                // Thread communication
-                serial_status_shared: Arc::new(Mutex::new("Disconnected".into())),
             },
             iced::window::change_mode(iced::window::Id::MAIN, iced::window::Mode::Fullscreen),
         )
@@ -179,36 +195,8 @@ impl Application for TelemetryGui {
                     }
                 }
 
-                // If LoRa transmission is enabled, send the CAN frame in a non-blocking way
-                if self.lora_enabled {
-                    // Clone what we need for the thread
-                    let serial_manager = self.serial_manager.clone();
-                    let frame_data = frame.data().to_vec();
-                    let frame_id = raw_id;
-                    let status_shared = Arc::clone(&self.serial_status_shared);
-
-                    // Spawn a thread to handle serial sending
-                    thread::spawn(move || {
-                        if let Err(e) = serial_manager.send_can_frame(frame_id, &frame_data) {
-                            println!("Failed to send CAN frame over serial: {}", e);
-
-                            // Update status
-                            if let Ok(mut status) = status_shared.lock() {
-                                *status = format!("Error: {}", e);
-                            }
-                        } else {
-                            // Successfully sent
-                            if let Ok(mut status) = status_shared.lock() {
-                                *status = format!("Sent: ID 0x{:X}", frame_id);
-                            }
-                        }
-                    });
-
-                    // Update our status from the shared status
-                    if let Ok(status) = self.serial_status_shared.lock() {
-                        self.serial_status = status.clone();
-                    }
-                }
+                // Send the CAN frame to all enabled modems
+                self.send_can_frame_to_enabled_modems(raw_id, frame.data());
             }
 
             Message::ToggleFullscreen => {
@@ -244,44 +232,86 @@ impl Application for TelemetryGui {
                 }
             }
 
-            Message::PortSelected(port) => {
-                self.selected_port = Some(port);
-            }
+            Message::PortSelected(modem_type, port) => match modem_type {
+                ModemType::Lora => {
+                    self.lora_selected_port = Some(port);
+                }
+                ModemType::Rfd900x => {
+                    self.rfd_selected_port = Some(port);
+                }
+            },
 
-            Message::ConnectSerialPort => {
-                if let Some(port) = &self.selected_port {
-                    match self.serial_manager.connect(port, 115200) {
-                        Ok(_) => {
-                            let status = format!("Connected to {}", port);
-                            self.serial_status = status.clone();
-                            if let Ok(mut shared) = self.serial_status_shared.lock() {
-                                *shared = status;
+            Message::ConnectSerialPort(modem_type) => match modem_type {
+                ModemType::Lora => {
+                    if let Some(port) = &self.lora_selected_port {
+                        match self.serial_manager.connect_lora(port) {
+                            Ok(_) => {
+                                self.lora_status = format!("Connected to {}", port);
+                                self.lora_connected = true;
                             }
-                        }
-                        Err(e) => {
-                            let status = format!("Error: {}", e);
-                            self.serial_status = status.clone();
-                            if let Ok(mut shared) = self.serial_status_shared.lock() {
-                                *shared = status;
+                            Err(e) => {
+                                self.lora_status = format!("Error: {}", e);
+                                self.lora_connected = false;
                             }
                         }
                     }
                 }
-            }
-
-            Message::ToggleLoRa => {
-                self.lora_enabled = !self.lora_enabled;
-                let status = if self.lora_enabled {
-                    "LoRa transmission enabled".to_string()
-                } else {
-                    "LoRa transmission disabled".to_string()
-                };
-                self.serial_status = status.clone();
-                if let Ok(mut shared) = self.serial_status_shared.lock() {
-                    *shared = status;
+                ModemType::Rfd900x => {
+                    if let Some(port) = &self.rfd_selected_port {
+                        match self.serial_manager.connect_rfd(port) {
+                            Ok(_) => {
+                                self.rfd_status = format!("Connected to {}", port);
+                                self.rfd_connected = true;
+                            }
+                            Err(e) => {
+                                self.rfd_status = format!("Error: {}", e);
+                                self.rfd_connected = false;
+                            }
+                        }
+                    }
                 }
-            }
+            },
+
+            Message::DisconnectModem(modem_type) => match modem_type {
+                ModemType::Lora => {
+                    self.serial_manager.disconnect(ModemType::Lora);
+                    self.lora_status = "Disconnected".to_string();
+                    self.lora_connected = false;
+                    self.lora_enabled = false;
+                }
+                ModemType::Rfd900x => {
+                    self.serial_manager.disconnect(ModemType::Rfd900x);
+                    self.rfd_status = "Disconnected".to_string();
+                    self.rfd_connected = false;
+                    self.rfd_enabled = false;
+                }
+            },
+
+            Message::ToggleModem(modem_type) => match modem_type {
+                ModemType::Lora => {
+                    self.lora_enabled = !self.lora_enabled;
+                    let status = if self.lora_enabled {
+                        "LoRa transmission enabled".to_string()
+                    } else {
+                        "LoRa transmission disabled".to_string()
+                    };
+                    self.lora_status = status;
+                }
+                ModemType::Rfd900x => {
+                    self.rfd_enabled = !self.rfd_enabled;
+                    let status = if self.rfd_enabled {
+                        "RFD transmission enabled".to_string()
+                    } else {
+                        "RFD transmission disabled".to_string()
+                    };
+                    self.rfd_status = status;
+                }
+            },
         }
+
+        // Update connection status from the SerialManager
+        self.update_modem_status();
+
         Command::none()
     }
 
@@ -306,9 +336,18 @@ impl Application for TelemetryGui {
 
         let serial_config = SerialConfig {
             available_ports: self.available_ports.clone(),
-            selected_port: self.selected_port.clone(),
-            serial_status: self.serial_status.clone(),
+
+            // LoRa config
+            lora_selected_port: self.lora_selected_port.clone(),
+            lora_connected: self.lora_connected,
+            lora_status: self.lora_status.clone(),
             lora_enabled: self.lora_enabled,
+
+            // RFD config
+            rfd_selected_port: self.rfd_selected_port.clone(),
+            rfd_connected: self.rfd_connected,
+            rfd_status: self.rfd_status.clone(),
+            rfd_enabled: self.rfd_enabled,
         };
 
         // Use our components
@@ -318,6 +357,9 @@ impl Application for TelemetryGui {
         let battery_element = battery_box(&battery_data);
         let bps_element = bps_box(&bps_data);
         let serial_element = serial_panel(&serial_config);
+
+        // Create modem status indicators
+        let modem_status_element = modem_status_indicators(self.lora_connected, self.rfd_connected);
 
         // Create fault panel with expanded state and current index
         let fault_element = fault_section(
@@ -329,6 +371,7 @@ impl Application for TelemetryGui {
         // Use the layout utility to organize everything
         main_layout(
             self.fullscreen,
+            modem_status_element,
             direction_element,
             speed_element,
             status_element,
@@ -405,6 +448,81 @@ impl Application for TelemetryGui {
             } else {
                 Subscription::none()
             },
+            // Add a timer for checking modem connection status
+            time::every(std::time::Duration::from_millis(500)).map(|_| {
+                // We'll use this timer event to update the modem status in the update function
+                // Reusing CycleFault to avoid adding a new message type
+                Message::CycleFault
+            }),
         ])
+    }
+}
+
+impl TelemetryGui {
+    // Helper method to update modem status from the SerialManager
+    fn update_modem_status(&mut self) {
+        // Update LoRa modem status
+        if let Ok(lora_status) = self.serial_manager.lora_status.lock() {
+            self.lora_connected = lora_status.connected;
+            if self.lora_connected {
+                self.lora_status = format!(
+                    "Connected to {}",
+                    lora_status
+                        .port_name
+                        .clone()
+                        .unwrap_or_else(|| "Unknown".to_string())
+                );
+            } else if let Some(error) = &lora_status.error_message {
+                self.lora_status = error.clone();
+            } else {
+                self.lora_status = "Disconnected".to_string();
+            }
+        }
+
+        // Update RFD modem status
+        if let Ok(rfd_status) = self.serial_manager.rfd_status.lock() {
+            self.rfd_connected = rfd_status.connected;
+            if self.rfd_connected {
+                self.rfd_status = format!(
+                    "Connected to {}",
+                    rfd_status
+                        .port_name
+                        .clone()
+                        .unwrap_or_else(|| "Unknown".to_string())
+                );
+            } else if let Some(error) = &rfd_status.error_message {
+                self.rfd_status = error.clone();
+            } else {
+                self.rfd_status = "Disconnected".to_string();
+            }
+        }
+
+        // Update available ports list periodically
+        if self.available_ports.is_empty() {
+            self.available_ports = SerialManager::list_available_ports();
+        }
+    }
+
+    // Helper method to send CAN frame to enabled modems
+    fn send_can_frame_to_enabled_modems(&self, can_id: u32, data: &[u8]) {
+        // Check if LoRa is enabled and connected
+        if self.lora_enabled && self.lora_connected {
+            if let Err(e) =
+                self.serial_manager
+                    .send_can_frame_to_modem(ModemType::Lora, can_id, data)
+            {
+                println!("Failed to send CAN frame via LoRa: {}", e);
+            }
+        }
+
+        // Check if RFD is enabled and connected
+        if self.rfd_enabled && self.rfd_connected {
+            if let Err(e) =
+                self.serial_manager
+                    .send_can_frame_to_modem(ModemType::Rfd900x, can_id, data)
+            {
+                println!("Failed to send CAN frame via RFD: {}", e);
+            }
+        }
     }
 }

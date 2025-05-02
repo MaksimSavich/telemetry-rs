@@ -1,3 +1,4 @@
+use crate::serial::ModemType;
 use chrono::{DateTime, Utc};
 use iced::{widget::container::StyleSheet, Color, Theme};
 use socketcan::CanFrame;
@@ -20,9 +21,10 @@ pub enum Message {
     ClearFaults,
 
     // Serial port messages
-    PortSelected(String),
-    ConnectSerialPort,
-    ToggleLoRa,
+    PortSelected(ModemType, String),
+    ConnectSerialPort(ModemType),
+    DisconnectModem(ModemType),
+    ToggleModem(ModemType),
 
     // Fault panel messages
     ToggleFaultPanelExpanded,

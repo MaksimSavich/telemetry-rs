@@ -151,7 +151,7 @@ impl CanDecoder {
                 .fold(String::new(), |mut acc, signal| {
                     let raw_value = {
                         // Re-add the data array reversal that was necessary for correct decoding
-                        let mut data_array = frame.data().to_vec();
+                        let data_array = frame.data().to_vec();
                         // data_array.reverse(); // Re-add the reversal for your specific CAN implementation
 
                         let start_bit = *signal.start_bit() as usize;
