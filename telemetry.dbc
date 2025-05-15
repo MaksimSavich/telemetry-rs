@@ -113,10 +113,9 @@ BO_ 1910 BPS_Sense: 8 Vector__XXX
 
 BO_ 1911 BPS_Misc: 8 Vector__XXX
  SG_ BPS_State : 62|2@1+ (1,0) [0|0] "" Vector__XXX
- SG_ BPS_ON_Time : 48|14@1+ (0.01,0) [0|0] "" Vector__XXX
- SG_ Fault_BPS_Val2 : 32|16@1+ (0.01,0) [0|0] "" Vector__XXX
- SG_ Fault_BPS_Val1 : 16|16@1+ (0.01,0) [0|0] "" Vector__XXX
- SG_ Reserved : 14|2@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BPS_ON_Time : 46|16@1+ (0.01,0) [0|0] "" Vector__XXX
+ SG_ Fault_BPS_Val2 : 30|16@1+ (0.01,0) [0|0] "" Vector__XXX
+ SG_ Fault_BPS_Val1 : 14|16@1+ (0.01,0) [0|0] "" Vector__XXX
  SG_ Fault_BPS_CAN : 12|2@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Fault_BPS_Precharge : 10|2@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Fault_BPS_Main_Pack_Voltage : 8|2@1+ (1,0) [0|0] "" Vector__XXX
