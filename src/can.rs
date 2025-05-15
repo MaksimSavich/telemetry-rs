@@ -207,7 +207,11 @@ impl CanDecoder {
     ) -> u64 {
         let mut value = 0u64;
 
-        // Note: data is already reversed before being passed to this function
+        println!(
+            "Extracting signal: start_bit={}, size={}, is_intel={}",
+            start_bit, size, is_intel
+        );
+        println!("Data bytes: {:02X?}", data); // Print all data bytes in hex
 
         if is_intel {
             // Intel format (little-endian)
@@ -217,7 +221,13 @@ impl CanDecoder {
 
                 // Make sure we don't go out of bounds
                 if byte_index < data.len() {
-                    if (data[byte_index] & (1 << bit_index)) != 0 {
+                    let bit_value = (data[byte_index] & (1 << bit_index)) != 0;
+                    println!(
+                        "  Little-endian bit {}: byte_index={}, bit_index={}, bit value={}",
+                        i, byte_index, bit_index, bit_value
+                    );
+
+                    if bit_value {
                         value |= 1 << i;
                     }
                 }
@@ -235,13 +245,20 @@ impl CanDecoder {
 
                 // Make sure we don't go out of bounds
                 if current_byte < data.len() {
-                    if (data[current_byte] & (1 << current_bit_in_byte)) != 0 {
+                    let bit_value = (data[current_byte] & (1 << current_bit_in_byte)) != 0;
+                    println!(
+                        "  Big-endian bit {}: byte={}, bit_in_byte={}, bit value={}",
+                        i, current_byte, current_bit_in_byte, bit_value
+                    );
+
+                    if bit_value {
                         value |= 1 << (size - 1 - i);
                     }
                 }
             }
         }
 
+        println!("Extracted value: {}", value);
         value
     }
 }
