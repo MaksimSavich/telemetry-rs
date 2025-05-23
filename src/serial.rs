@@ -59,6 +59,8 @@ pub struct SerialManager {
     pub rfd_status: Arc<Mutex<ModemStatus>>,
     scan_thread: Option<JoinHandle<()>>,
     scan_running: Arc<Mutex<bool>>,
+    lora_enabled: Arc<Mutex<bool>>,
+    rfd_enabled: Arc<Mutex<bool>>,
 }
 
 impl SerialManager {
@@ -80,9 +82,28 @@ impl SerialManager {
             rfd_status: Arc::new(Mutex::new(ModemStatus::new())),
             scan_thread: None,
             scan_running: Arc::new(Mutex::new(false)),
+            lora_enabled: Arc::new(Mutex::new(true)),
+            rfd_enabled: Arc::new(Mutex::new(true)),
         };
 
         instance
+    }
+
+    // Enable/disable modems
+    pub fn set_lora_enabled(&self, enabled: bool) {
+        *self.lora_enabled.lock().unwrap() = enabled;
+    }
+
+    pub fn set_rfd_enabled(&self, enabled: bool) {
+        *self.rfd_enabled.lock().unwrap() = enabled;
+    }
+
+    pub fn is_lora_enabled(&self) -> bool {
+        *self.lora_enabled.lock().unwrap()
+    }
+
+    pub fn is_rfd_enabled(&self) -> bool {
+        *self.rfd_enabled.lock().unwrap()
     }
 
     // Start scanning for modems in the background
@@ -100,6 +121,8 @@ impl SerialManager {
         let lora_status = Arc::clone(&self.lora_status);
         let rfd_status = Arc::clone(&self.rfd_status);
         let scan_running = Arc::clone(&self.scan_running);
+        let lora_enabled = Arc::clone(&self.lora_enabled);
+        let rfd_enabled = Arc::clone(&self.rfd_enabled);
 
         // Spawn a thread to perform scanning
         let scan_thread = thread::spawn(move || {
@@ -124,7 +147,7 @@ impl SerialManager {
                     >= CONNECTION_CHECK_INTERVAL_MS as u128
                 {
                     // Check LoRa connection
-                    {
+                    if *lora_enabled.lock().unwrap() {
                         let mut lora_conn = lora_connection.lock().unwrap();
                         let mut status = lora_status.lock().unwrap();
 
@@ -147,16 +170,15 @@ impl SerialManager {
                     }
 
                     // Check RFD connection
-                    {
+                    if *rfd_enabled.lock().unwrap() {
                         let mut rfd_conn = rfd_connection.lock().unwrap();
                         let mut status = rfd_status.lock().unwrap();
 
                         if status.connected {
                             // Verify RFD connection is still active
                             if let Some(port) = &mut rfd_conn.port {
-                                // For RFD, just check if the port is still open
-                                // We could implement a more sophisticated check if needed
-                                if port.bytes_to_read().is_err() {
+                                // For RFD, check if we can enter and exit AT mode
+                                if let Err(_) = Self::verify_rfd_connection(port) {
                                     // Connection failed
                                     status.connected = false;
                                     status.error_message = Some("Connection lost".to_string());
@@ -177,7 +199,8 @@ impl SerialManager {
                 }
 
                 // Scan for LoRa devices if not connected and it's time to scan
-                if !lora_status.lock().unwrap().connected
+                if *lora_enabled.lock().unwrap()
+                    && !lora_status.lock().unwrap().connected
                     && now.duration_since(last_lora_scan).as_millis()
                         >= LORA_SCAN_INTERVAL_MS as u128
                 {
@@ -192,7 +215,8 @@ impl SerialManager {
                 }
 
                 // Scan for RFD devices if not connected and it's time to scan
-                if !rfd_status.lock().unwrap().connected
+                if *rfd_enabled.lock().unwrap()
+                    && !rfd_status.lock().unwrap().connected
                     && now.duration_since(last_rfd_scan).as_millis() >= RFD_SCAN_INTERVAL_MS as u128
                 {
                     Self::scan_for_modem(
@@ -250,7 +274,7 @@ impl SerialManager {
 
             // Try to open the port
             match serialport::new(&port_name, baud_rate)
-                .timeout(Duration::from_millis(100))
+                .timeout(Duration::from_millis(500))
                 .open()
             {
                 Ok(mut port) => {
@@ -331,144 +355,68 @@ impl SerialManager {
         match port.read(&mut buf) {
             Ok(n) if n > 0 => {
                 // Got some data, assume it's a valid LoRa device
-                // In a more robust implementation, we would parse the response
                 Ok(())
             }
             _ => Err("No response from device".to_string()),
         }
     }
 
-    // Verify an RFD connection (just checks port is open at the correct baud rate)
-    fn verify_rfd_connection(_port: &mut Box<dyn SerialPort>) -> Result<(), String> {
-        // For RFD, we'll assume success if the port opens successfully at the right baud rate
-        // We could add more verification if needed
-        Ok(())
-    }
+    // Verify an RFD connection using AT commands
+    fn verify_rfd_connection(port: &mut Box<dyn SerialPort>) -> Result<(), String> {
+        // Clear any pending data
+        let _ = port.flush();
 
-    // Manually connect to a LoRa device on a specific port
-    pub fn connect_lora(&self, port_name: &str) -> Result<(), String> {
-        let mut lora_conn = self.lora_connection.lock().unwrap();
-        let mut status = self.lora_status.lock().unwrap();
+        // Send +++ to enter AT command mode
+        thread::sleep(Duration::from_millis(100));
+        port.write_all(b"+++")
+            .map_err(|e| format!("Failed to send +++: {}", e))?;
+        thread::sleep(Duration::from_millis(1000)); // Wait for AT mode
 
-        // Close existing connection if any
-        lora_conn.port = None;
-        status.connected = false;
+        // Clear read buffer
+        let mut buf = [0u8; 256];
+        let _ = port.read(&mut buf);
 
-        // Try to open the new port
-        match serialport::new(port_name, LORA_BAUD_RATE)
-            .timeout(Duration::from_millis(100))
-            .open()
-        {
-            Ok(mut port) => {
-                // Verify it's a LoRa device
-                match Self::verify_lora_connection(&mut port) {
-                    Ok(()) => {
-                        lora_conn.port = Some(port);
-                        status.connected = true;
-                        status.port_name = Some(port_name.to_string());
-                        status.last_success = Some(Instant::now());
-                        status.error_message = None;
-                        Ok(())
-                    }
-                    Err(e) => {
-                        status.error_message = Some(format!("Not a LoRa device: {}", e));
-                        Err(format!("Not a LoRa device: {}", e))
-                    }
+        // Send AT to check if we're in command mode
+        port.write_all(b"AT\r\n")
+            .map_err(|e| format!("Failed to send AT: {}", e))?;
+        thread::sleep(Duration::from_millis(100));
+
+        // Read response
+        let mut response = vec![0u8; 128];
+        match port.read(&mut response) {
+            Ok(n) if n > 0 => {
+                let response_str = String::from_utf8_lossy(&response[..n]);
+                if response_str.contains("OK") {
+                    // Exit AT mode
+                    port.write_all(b"ATO\r\n")
+                        .map_err(|e| format!("Failed to send ATO: {}", e))?;
+                    thread::sleep(Duration::from_millis(100));
+                    Ok(())
+                } else {
+                    Err("Invalid AT response".to_string())
                 }
             }
-            Err(e) => {
-                status.error_message = Some(format!("Failed to open port: {}", e));
-                Err(format!("Failed to open port: {}", e))
-            }
+            _ => Err("No response to AT command".to_string()),
         }
     }
 
-    // Manually connect to an RFD device on a specific port
-    pub fn connect_rfd(&self, port_name: &str) -> Result<(), String> {
-        let mut rfd_conn = self.rfd_connection.lock().unwrap();
-        let mut status = self.rfd_status.lock().unwrap();
-
-        // Close existing connection if any
-        rfd_conn.port = None;
-        status.connected = false;
-
-        // Try to open the new port
-        match serialport::new(port_name, RFD_BAUD_RATE)
-            .timeout(Duration::from_millis(100))
-            .open()
-        {
-            Ok(mut port) => {
-                // For RFD, just assume it's correct if port opens at the right baud rate
-                match Self::verify_rfd_connection(&mut port) {
-                    Ok(()) => {
-                        rfd_conn.port = Some(port);
-                        status.connected = true;
-                        status.port_name = Some(port_name.to_string());
-                        status.last_success = Some(Instant::now());
-                        status.error_message = None;
-                        Ok(())
-                    }
-                    Err(e) => {
-                        status.error_message = Some(format!("Not an RFD device: {}", e));
-                        Err(format!("Not an RFD device: {}", e))
-                    }
-                }
-            }
-            Err(e) => {
-                status.error_message = Some(format!("Failed to open port: {}", e));
-                Err(format!("Failed to open port: {}", e))
-            }
-        }
-    }
-
-    // Disconnect a specific modem
-    pub fn disconnect(&self, modem_type: ModemType) {
-        match modem_type {
-            ModemType::Lora => {
-                let mut lora_conn = self.lora_connection.lock().unwrap();
-                let mut status = self.lora_status.lock().unwrap();
-                lora_conn.port = None;
-                status.connected = false;
-                status.port_name = None;
-            }
-            ModemType::Rfd900x => {
-                let mut rfd_conn = self.rfd_connection.lock().unwrap();
-                let mut status = self.rfd_status.lock().unwrap();
-                rfd_conn.port = None;
-                status.connected = false;
-                status.port_name = None;
-            }
-        }
-    }
-
-    // Send CAN frame to a specific modem
-    pub fn send_can_frame_to_modem(
-        &self,
-        modem_type: ModemType,
-        can_id: u32,
-        data: &[u8],
-    ) -> Result<(), String> {
-        match modem_type {
-            ModemType::Lora => self.send_can_frame_lora(can_id, data),
-            ModemType::Rfd900x => self.send_can_frame_rfd(can_id, data),
-        }
-    }
-
-    // Send CAN frame to all connected modems
+    // Send CAN frame to all enabled and connected modems
     pub fn send_can_frame(&self, can_id: u32, data: &[u8]) -> Result<(), String> {
         let lora_connected = self.lora_status.lock().unwrap().connected;
         let rfd_connected = self.rfd_status.lock().unwrap().connected;
+        let lora_enabled = self.is_lora_enabled();
+        let rfd_enabled = self.is_rfd_enabled();
 
         // Collect errors to return a combined result
         let mut errors = Vec::new();
 
-        if lora_connected {
+        if lora_enabled && lora_connected {
             if let Err(e) = self.send_can_frame_lora(can_id, data) {
                 errors.push(format!("LoRa error: {}", e));
             }
         }
 
-        if rfd_connected {
+        if rfd_enabled && rfd_connected {
             if let Err(e) = self.send_can_frame_rfd(can_id, data) {
                 errors.push(format!("RFD error: {}", e));
             }
@@ -532,7 +480,6 @@ impl SerialManager {
             Ok(guard) => guard,
             Err(_) => {
                 // Port is busy - log but don't block
-                println!("LoRa port busy - skipping frame ID=0x{:X}", can_id);
                 return Ok(()); // Return Ok to prevent error flooding
             }
         };
@@ -547,7 +494,6 @@ impl SerialManager {
                 Ok(_) => {
                     // Try to flush but don't fail if it doesn't work
                     let _ = port.flush();
-                    println!("Sent CAN frame via LoRa: ID=0x{:X}", can_id);
                     Ok(())
                 }
                 Err(e) => Err(format!("Failed to write to LoRa port: {}", e)),
@@ -582,7 +528,6 @@ impl SerialManager {
             Ok(guard) => guard,
             Err(_) => {
                 // Port is busy - log but don't block
-                println!("RFD port busy - skipping frame ID=0x{:X}", can_id);
                 return Ok(()); // Return Ok to prevent error flooding
             }
         };
@@ -597,7 +542,6 @@ impl SerialManager {
                 Ok(_) => {
                     // Try to flush but don't fail if it doesn't work
                     let _ = port.flush();
-                    println!("Sent CAN frame via RFD: ID=0x{:X}", can_id);
                     Ok(())
                 }
                 Err(e) => Err(format!("Failed to write to RFD port: {}", e)),
@@ -636,6 +580,8 @@ impl Clone for SerialManager {
             rfd_status: Arc::clone(&self.rfd_status),
             scan_thread: None, // Don't clone the thread
             scan_running: Arc::clone(&self.scan_running),
+            lora_enabled: Arc::clone(&self.lora_enabled),
+            rfd_enabled: Arc::clone(&self.rfd_enabled),
         }
     }
 }
