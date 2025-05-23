@@ -324,7 +324,7 @@ impl Application for TelemetryGui {
             {
                 let decoder = self.decoder.clone();
                 subscription::unfold("can_subscription", decoder, |decoder| async {
-                    let socket = match CanSocket::open("vcan0") {
+                    let socket = match CanSocket::open("can0") {
                         Ok(s) => s,
                         Err(e) => {
                             eprintln!("Failed to open CAN socket: {}", e);
