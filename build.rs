@@ -1,7 +1,8 @@
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Tell Cargo to re-run this script if the proto files change
-    println!("cargo:rerun-if-changed=packet.proto");
-    println!("cargo:rerun-if-changed=packet.options");
+    println!("cargo:rerun-if-changed=src/packet.proto");
+    println!("cargo:rerun-if-changed=src/packet.options");
+    println!("cargo:rerun-if-changed=build.rs");
 
     // Get the OUT_DIR environment variable
     let out_dir = std::env::var("OUT_DIR")?;
