@@ -152,7 +152,7 @@ impl Application for TelemetryGui {
                             "Actual_Speed_RPM" => match val.parse::<f64>() {
                                 Ok(v) => {
                                     self.speed_mph =
-                                        (v * 21.25 * std::f64::consts::PI * 60.0) / 63360.0
+                                        (v * 23.5 * std::f64::consts::PI * 60.0) / 63360.0
                                 }
                                 Err(_) => {}
                             },
@@ -324,7 +324,7 @@ impl Application for TelemetryGui {
             {
                 let decoder = self.decoder.clone();
                 subscription::unfold("can_subscription", decoder, |decoder| async {
-                    let socket = match CanSocket::open("can0") {
+                    let socket = match CanSocket::open("vcan0") {
                         Ok(s) => s,
                         Err(e) => {
                             eprintln!("Failed to open CAN socket: {}", e);
