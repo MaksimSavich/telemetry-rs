@@ -156,7 +156,7 @@ impl Application for TelemetryGui {
                                 }
                                 Err(_) => {}
                             },
-                            "Direction" => self.direction = val.to_string(),
+                            "MC2_Status_Of_Command" => self.direction = val.to_string(),
 
                             // BMS data
                             "Pack_DCL" => match val.parse::<f64>() {
@@ -201,11 +201,11 @@ impl Application for TelemetryGui {
                             },
 
                             // Battery/BPS data
-                            "BPS_Voltage_V" => match val.parse::<f64>() {
+                            "Pack_Summed_Voltage" => match val.parse::<f64>() {
                                 Ok(v) => self.battery_voltage = v,
                                 Err(_) => {}
                             },
-                            "BPS_Current_A" => match val.parse::<f64>() {
+                            "Pack_Current" => match val.parse::<f64>() {
                                 Ok(v) => self.battery_current = v,
                                 Err(_) => {}
                             },

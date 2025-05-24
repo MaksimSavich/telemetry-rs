@@ -46,7 +46,7 @@ BO_ 160 MSGID_0XA0: 8 BMS
  SG_ Pack_CCL_KW : 16|16@1+ (0.1,0) [0|0] "kW"  Third_Party_Device
  SG_ Pack_CCL : 0|16@1+ (1,0) [0|0] "Amps"  Third_Party_Device
 
-BO_ 177 MSGID_0XB1: 8 BMS
+BO_ 1744 MSGID_0X6D0: 8 BMS
  SG_ Pack_kW_Power : 48|16@1+ (0.1,0) [0|0] "kW"  Third_Party_Device
  SG_ Pack_Open_Voltage : 32|16@1+ (0.1,0) [0|0] "Volts"  Third_Party_Device
  SG_ Pack_Summed_Voltage : 16|16@1+ (0.01,0) [0|0] "Volts"  Third_Party_Device
@@ -152,7 +152,8 @@ BO_ 2364612101 MotorController_1_Status1: 8 Vector__XXX
 
 BO_ 2364612357 MotorController_1_Status2: 8 Vector__XXX
  SG_ Status_Switch_Signals : 40|8@1+ (1,0) [0|0] "" Vector__XXX
- SG_ Status_Controller : 32|8@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ MC2_Status_Controller : 36|4@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ MC2_Status_Of_Command : 32|4@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Motor_Temperature_C : 16|8@1- (1.0,-30) [-30|225] "�C" Vector__XXX
  SG_ Controller_Temperature_C : 8|8@1- (1.0,-40) [-40|215] "�C" Vector__XXX
  SG_ Throttle_Signal : 0|8@1+ (0.0196,0) [0|5] "V" Vector__XXX
@@ -180,7 +181,8 @@ BO_ 2364612102 MotorController_2_Status1: 8 Vector__XXX
 
 BO_ 2364612358 MotorController_2_Status2: 8 Vector__XXX
  SG_ Status_Switch_Signals : 40|8@1+ (1,0) [0|0] "" Vector__XXX
- SG_ Status_Controller : 32|8@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ MC1_Status_Controller : 36|4@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ MC1_Status_Of_Command : 32|4@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Motor_Temperature_C : 16|8@1- (1.0,-30) [-30|225] "�C" Vector__XXX
  SG_ Controller_Temperature_C : 8|8@1- (1.0,-40) [-40|215] "�C" Vector__XXX
  SG_ Throttle_Signal : 0|8@1+ (0.0196,0) [0|5] "V" Vector__XXX
@@ -222,7 +224,6 @@ BO_ 1911 BPS_Misc: 8 Vector__XXX
 
 CM_ BO_ 768 "This ID Transmits at 8 ms.";
 CM_ BO_ 160 "This ID Transmits at 504 ms.";
-CM_ BO_ 177 "This ID Transmits at 104 ms.";
 CM_ BO_ 194 "This ID Transmits at 1000 ms.";
 CM_ BO_ 211 "This ID Transmits at 1000 ms.";
 CM_ BO_ 228 "This ID Transmits at 2000 ms.";
@@ -257,6 +258,8 @@ VAL_ 2364612101 Fault_MC_ERR3 0 "OK" 1 "Reserved" ;
 VAL_ 2364612101 Fault_MC_ERR2 0 "OK" 1 "Low voltage" ;
 VAL_ 2364612101 Fault_MC_ERR1 0 "OK" 1 "Over voltage" ;
 VAL_ 2364612101 Fault_MC_ERR0 0 "OK" 1 "Identification error" ;
+VAL_ 2364612357 MC2_Status_Controller 0 "Stationary" 1 "Forward" 2 "Backward" ;
+VAL_ 2364612357 MC2_Status_Of_Command 0 "Neutral" 1 "Forward" 2 "Backward" ;
 VAL_ 2364612102 Fault_MC_ERR15 0 "OK" 1 "Hall Galvanometer sensor" ;
 VAL_ 2364612102 Fault_MC_ERR14 0 "OK" 1 "Motor over-temperature" ;
 VAL_ 2364612102 Fault_MC_ERR13 0 "OK" 1 "Reserved" ;
@@ -273,6 +276,8 @@ VAL_ 2364612102 Fault_MC_ERR3 0 "OK" 1 "Reserved" ;
 VAL_ 2364612102 Fault_MC_ERR2 0 "OK" 1 "Low voltage" ;
 VAL_ 2364612102 Fault_MC_ERR1 0 "OK" 1 "Over voltage" ;
 VAL_ 2364612102 Fault_MC_ERR0 0 "OK" 1 "Identification error" ;
+VAL_ 2364612358 MC1_Status_Controller 0 "Stationary" 1 "Forward" 2 "Backward" ;
+VAL_ 2364612358 MC1_Status_Of_Command 0 "Neutral" 1 "Forward" 2 "Backward" ;
 VAL_ 1 Fault_MPPT 0 "OK" 1 "Configuration Error" 2 "Input Over Voltage" 3 "Output Over Voltage" 4 "Output Over Current" 5 "Input Over Current" 6 "Input Under Current" 7 "Phase Over Current" 8 "General Fault" ;
 VAL_ 1911 BPS_State 0 "STANDBY" 1 "ACCESSORY" 2 "CHARGING" 3 "PRIMARY" ;
 VAL_ 1911 Fault_BPS_CAN 0 "OK" 1 "BMS Fault" 2 "Timeout" 3 "Reserved" ;
