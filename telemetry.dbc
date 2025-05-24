@@ -46,7 +46,7 @@ BO_ 160 MSGID_0XA0: 8 BMS
  SG_ Pack_CCL_KW : 16|16@1+ (0.1,0) [0|0] "kW"  Third_Party_Device
  SG_ Pack_CCL : 0|16@1+ (1,0) [0|0] "Amps"  Third_Party_Device
 
-BO_ 1744 MSGID_0X6D0: 8 BMS
+BO_ 177 MSGID_0XB1: 8 BMS
  SG_ Pack_kW_Power : 48|16@1+ (0.1,0) [0|0] "kW"  Third_Party_Device
  SG_ Pack_Open_Voltage : 32|16@1+ (0.1,0) [0|0] "Volts"  Third_Party_Device
  SG_ Pack_Summed_Voltage : 16|16@1+ (0.01,0) [0|0] "Volts"  Third_Party_Device
@@ -118,7 +118,7 @@ BO_ 2565160996 MSGID_0X18E54024: 8 BMS
  SG_ Constant_Value_1 : 63|8@0+ (1,255) [0|0] ""  Third_Party_Device
  SG_ Constant_Value : 55|8@0+ (1,255) [0|0] ""  Third_Party_Device
  SG_ Pack_SOC : 47|8@0+ (17.5,0) [0|5] "Percent"  Third_Party_Device
- SG_ Pack_CCL : 24|16@1- (-0.1,3200) [0|0] "Amps"  Third_Party_Device
+ SG_ Pack_CCL : 24|16@1- (6553.5,3200) [0|0] "Amps"  Third_Party_Device
  SG_ Maximum_Pack_Voltage : 8|16@1+ (0.1,0) [0|0] "Volts"  Third_Party_Device
  SG_ Constant_1_5 : 7|1@1+ (1,0) [0|1] ""  Third_Party_Device
  SG_ Constant_1_4 : 6|1@1+ (1,0) [0|1] ""  Third_Party_Device
@@ -207,12 +207,12 @@ BO_ 1910 BPS_Sense: 8 Vector__XXX
  SG_ Supp_Temperature_C : 0|16@1+ (0.01,0) [0|0] "" Vector__XXX
 
 BO_ 1911 BPS_Misc: 8 Vector__XXX
- SG_ BPS_State : 62|2@1+ (1,0) [0|0] "" Vector__XXX
- SG_ BPS_ON_Time : 46|16@1+ (0.01,0) [0|0] "" Vector__XXX
- SG_ Fault_BPS_Val2 : 30|16@1+ (0.01,0) [0|0] "" Vector__XXX
- SG_ Fault_BPS_Val1 : 14|16@1+ (0.01,0) [0|0] "" Vector__XXX
- SG_ Fault_BPS_CAN : 12|2@1+ (1,0) [0|0] "" Vector__XXX
- SG_ Fault_BPS_Precharge : 10|2@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BPS_State : 61|3@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BPS_ON_Time : 45|16@1+ (0.01,0) [0|0] "" Vector__XXX
+ SG_ Fault_BPS_Val2 : 29|16@1+ (0.01,0) [0|0] "" Vector__XXX
+ SG_ Fault_BPS_Val1 : 13|16@1+ (0.01,0) [0|0] "" Vector__XXX
+ SG_ Fault_BPS_CAN : 11|2@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ Fault_BPS_Precharge : 10|1@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Fault_BPS_Main_Pack_Voltage : 8|2@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Fault_BPS_Current : 6|2@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Fault_BPS_DCDC_Voltage : 4|2@1+ (1,0) [0|0] "" Vector__XXX
@@ -224,6 +224,7 @@ BO_ 1911 BPS_Misc: 8 Vector__XXX
 
 CM_ BO_ 768 "This ID Transmits at 8 ms.";
 CM_ BO_ 160 "This ID Transmits at 504 ms.";
+CM_ BO_ 177 "This ID Transmits at 104 ms.";
 CM_ BO_ 194 "This ID Transmits at 1000 ms.";
 CM_ BO_ 211 "This ID Transmits at 1000 ms.";
 CM_ BO_ 228 "This ID Transmits at 2000 ms.";
@@ -279,11 +280,11 @@ VAL_ 2364612102 Fault_MC_ERR0 0 "OK" 1 "Identification error" ;
 VAL_ 2364612358 MC1_Status_Controller 0 "Stationary" 1 "Forward" 2 "Backward" ;
 VAL_ 2364612358 MC1_Status_Of_Command 0 "Neutral" 1 "Forward" 2 "Backward" ;
 VAL_ 1 Fault_MPPT 0 "OK" 1 "Configuration Error" 2 "Input Over Voltage" 3 "Output Over Voltage" 4 "Output Over Current" 5 "Input Over Current" 6 "Input Under Current" 7 "Phase Over Current" 8 "General Fault" ;
-VAL_ 1911 BPS_State 0 "STANDBY" 1 "ACCESSORY" 2 "CHARGING" 3 "PRIMARY" ;
+VAL_ 1911 BPS_State 0 "STANDBY" 1 "PRIMARY" 2 "ACCESSORY" 3 "MPPT_CHARGING" 4 "WALL_CHARGING" 5 "FAULT" ;
 VAL_ 1911 Fault_BPS_CAN 0 "OK" 1 "BMS Fault" 2 "Timeout" 3 "Reserved" ;
 VAL_ 1911 Fault_BPS_Precharge 0 "OK" 1 "Precharge Fail" 2 "Reserved" 3 "Reserved" ;
 VAL_ 1911 Fault_BPS_Main_Pack_Voltage 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "Reserved" ;
-VAL_ 1911 Fault_BPS_Current 0 "OK" 1 "CAN Sensor Broken" 2 "Over Current" 3 "Reserved" ;
+VAL_ 1911 Fault_BPS_Current 0 "OK" 1 "Over Current" 2 "Current Sensor Disconnected" 3 "Reserved" ;
 VAL_ 1911 Fault_BPS_DCDC_Voltage 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "Reserved" ;
 VAL_ 1911 Fault_BPS_Supp_Temperature 0 "OK" 1 "Under Temperature" 2 "Over Temperature" 3 "Reserved" ;
 VAL_ 1911 Fault_BPS_Supp_Voltage 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "Reserved" ;

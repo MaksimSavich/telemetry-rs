@@ -1,3 +1,5 @@
+// Complete updated src/gui.rs file
+
 use crate::can::CanDecoder;
 use crate::logger::CanLogger;
 use crate::serial::SerialManager;
@@ -35,6 +37,11 @@ pub struct TelemetryGui {
 
     // Fault tracking
     active_faults: HashMap<String, Fault>,
+
+    // Fault cycling state
+    fault_page_index: usize,   // Current fault page (0-based)
+    fault_cycle_timer: u32,    // Timer for cycling (increments every 500ms)
+    fault_cycle_interval: u32, // Number of ticks between cycles (6 seconds = 12 ticks at 500ms)
 
     // System components
     decoder: CanDecoder,
@@ -91,6 +98,12 @@ impl Application for TelemetryGui {
                 bps_ontime: 0,
                 bps_state: "Standby".into(),
                 active_faults: HashMap::new(),
+
+                // Initialize fault cycling state
+                fault_page_index: 0,
+                fault_cycle_timer: 0,
+                fault_cycle_interval: 12, // 6 seconds at 500ms per tick
+
                 theme: iced::Theme::Dark,
                 decoder: CanDecoder::new("telemetry.dbc"),
                 logger,
@@ -273,6 +286,28 @@ impl Application for TelemetryGui {
 
                 // Update modem connection status
                 self.update_modem_status();
+
+                // Handle fault cycling
+                let fault_count = self.active_faults.len();
+                if fault_count > 5 {
+                    // Increment the fault cycle timer
+                    self.fault_cycle_timer += 1;
+
+                    // Check if it's time to cycle to the next page
+                    if self.fault_cycle_timer >= self.fault_cycle_interval {
+                        self.fault_cycle_timer = 0; // Reset timer
+
+                        // Calculate total pages
+                        let total_pages = (fault_count + 4) / 5; // Ceiling division for 5 faults per page
+
+                        // Move to next page, wrapping around if necessary
+                        self.fault_page_index = (self.fault_page_index + 1) % total_pages;
+                    }
+                } else {
+                    // Reset cycling state when we have 5 or fewer faults
+                    self.fault_page_index = 0;
+                    self.fault_cycle_timer = 0;
+                }
             }
         }
 
@@ -300,7 +335,7 @@ impl Application for TelemetryGui {
         let speed_direction = direction_speed_display(&self.direction, self.speed_mph);
         let battery_info = battery_box(&battery_data);
         let bps_info = bps_box(&bps_data);
-        let fault_display = fault_display(&self.active_faults);
+        let fault_display = fault_display(&self.active_faults, self.fault_page_index);
         let time_display = time_display(&self.current_time);
 
         // Use the layout utility to organize everything

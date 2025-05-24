@@ -1,15 +1,38 @@
 use crate::gui_modules::{create_error_container_style, Fault, Message};
 use iced::widget::container::{Appearance, StyleSheet};
-use iced::widget::{column, container, row, scrollable, text, Space};
+use iced::widget::{column, container, row, text, Space};
 use iced::{Alignment, Color, Element, Length};
 use std::collections::HashMap;
 
-pub fn fault_display(active_faults: &HashMap<String, Fault>) -> Element<'static, Message> {
+const FAULTS_PER_PAGE: usize = 5;
+
+pub fn fault_display(
+    active_faults: &HashMap<String, Fault>,
+    current_page: usize,
+) -> Element<'static, Message> {
     let fault_count = active_faults.len();
 
-    // Header showing fault count
+    // Create pagination info
+    let total_pages = if fault_count == 0 {
+        0
+    } else {
+        (fault_count + FAULTS_PER_PAGE - 1) / FAULTS_PER_PAGE // Ceiling division
+    };
+
+    let page_info = if total_pages > 1 {
+        format!(
+            "ACTIVE FAULTS: {} (Page {}/{})",
+            fault_count,
+            current_page + 1,
+            total_pages
+        )
+    } else {
+        format!("ACTIVE FAULTS: {}", fault_count)
+    };
+
+    // Header showing fault count and page info
     let header = container(
-        text(format!("ACTIVE FAULTS: {}", fault_count))
+        text(page_info)
             .size(16)
             .horizontal_alignment(iced::alignment::Horizontal::Center),
     )
@@ -38,12 +61,21 @@ pub fn fault_display(active_faults: &HashMap<String, Fault>) -> Element<'static,
         .into();
     }
 
-    // Create scrollable list of faults
-    let mut fault_list = column![];
+    // Sort faults by timestamp (most recent first)
     let mut faults_vec: Vec<_> = active_faults.values().collect();
-    faults_vec.sort_by(|a, b| b.timestamp.cmp(&a.timestamp)); // Most recent first
+    faults_vec.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
 
-    for (idx, fault) in faults_vec.iter().enumerate() {
+    // Calculate the range of faults to display for current page
+    let start_index = current_page * FAULTS_PER_PAGE;
+    let end_index = std::cmp::min(start_index + FAULTS_PER_PAGE, fault_count);
+
+    // Get the faults for the current page
+    let current_page_faults = &faults_vec[start_index..end_index];
+
+    // Create list of faults for current page
+    let mut fault_list = column![];
+
+    for (idx, fault) in current_page_faults.iter().enumerate() {
         let fault_row = container(
             row![
                 // Timestamp
@@ -85,6 +117,25 @@ pub fn fault_display(active_faults: &HashMap<String, Fault>) -> Element<'static,
         fault_list = fault_list.push(fault_row);
     }
 
+    // Add empty rows to maintain consistent height (always show space for 5 rows)
+    let empty_rows_needed = FAULTS_PER_PAGE - current_page_faults.len();
+    for i in 0..empty_rows_needed {
+        let empty_row = container(
+            row![
+                Space::with_width(Length::FillPortion(1)),
+                Space::with_width(Length::FillPortion(1)),
+                Space::with_width(Length::FillPortion(2)),
+                Space::with_width(Length::FillPortion(1)),
+            ]
+            .spacing(5)
+            .padding(3),
+        )
+        .width(Length::Fill)
+        .height(Length::Fixed(25.0)); // Match the height of fault rows
+
+        fault_list = fault_list.push(empty_row);
+    }
+
     // Create header row for the fault list
     let list_header = container(
         row![
@@ -106,11 +157,11 @@ pub fn fault_display(active_faults: &HashMap<String, Fault>) -> Element<'static,
         },
     )));
 
-    // Combine everything with scrollable area
+    // Combine everything - no scrollable needed since we limit to 5 faults
     column![
         header,
         list_header,
-        scrollable(fault_list).height(Length::Fixed(120.0)) // Fixed height for fault display
+        container(fault_list).height(Length::Fixed(125.0)) // Fixed height for exactly 5 rows
     ]
     .spacing(0)
     .into()
