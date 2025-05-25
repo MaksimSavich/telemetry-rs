@@ -52,6 +52,10 @@ pub struct TelemetryGui {
     // Radio status
     lora_connected: bool,
     rfd_connected: bool,
+
+    // Configuration mappings
+    gui_value_mappings: HashMap<(&'static str, &'static str), GuiValueType>,
+    fault_signal_config: HashMap<&'static str, Vec<&'static str>>,
 }
 
 impl Application for TelemetryGui {
@@ -112,6 +116,10 @@ impl Application for TelemetryGui {
                 rfd_connected: false,
                 current_time: Local::now().format("%H:%M:%S").to_string(),
                 bms_data: BmsData::default(),
+
+                // Initialize configuration mappings
+                gui_value_mappings: get_gui_value_mappings(),
+                fault_signal_config: get_fault_signal_config(),
             },
             iced::window::change_mode(iced::window::Id::MAIN, iced::window::Mode::Fullscreen),
         )
@@ -148,116 +156,67 @@ impl Application for TelemetryGui {
                     0xC2 => "BMS_State",
                     0xD3 => "BMS_Capacity",
                     0x776 | 0x777 => "BPS_System",
-                    id if id == 0x8CF11E05 || (id & 0xFFFFFF00) == 0x8CF11E00 => {
+                    0x0 | 0x1 => "MPPT",
+                    // Motor Controller 1 (ID ending in 05)
+                    id if id == 0x8CF11E05
+                        || id == 0x8CF11F05
+                        || (id & 0xFFFFFF0F) == 0x8CF11E05
+                        || (id & 0xFFFFFF0F) == 0x8CF11F05 =>
+                    {
                         "MotorController_1"
                     }
-                    id if id == 0x8CF11F05 || (id & 0xFFFFFF00) == 0x8CF11F00 => {
+                    // Motor Controller 2 (ID ending in 06)
+                    id if id == 0x8CF11E06
+                        || id == 0x8CF11F06
+                        || (id & 0xFFFFFF0F) == 0x8CF11E06
+                        || (id & 0xFFFFFF0F) == 0x8CF11F06 =>
+                    {
                         "MotorController_2"
                     }
                     _ => "Unknown",
                 };
 
-                // Process telemetry data
+                // Process telemetry data using new mapping system
                 for line in decoded_str.lines() {
                     if let Some((signal, val)) = line.split_once(": ") {
-                        match signal {
-                            // Motor data
-                            "Actual_Speed_RPM" => match val.parse::<f64>() {
-                                Ok(v) => {
-                                    self.speed_mph =
-                                        (v * 23.5 * std::f64::consts::PI * 60.0) / 63360.0
-                                }
-                                Err(_) => {}
-                            },
-                            "MC2_Status_Of_Command" => self.direction = val.to_string(),
+                        // Check if this signal updates a GUI value
+                        let gui_value_type_opt = self
+                            .gui_value_mappings
+                            .get(&(message_name, signal))
+                            .cloned();
+                        if let Some(gui_value_type) = gui_value_type_opt {
+                            self.update_gui_value(&gui_value_type, val);
+                        }
 
-                            // BMS data
-                            "Pack_DCL" => match val.parse::<f64>() {
-                                Ok(v) => self.bms_data.pack_dcl = v,
-                                Err(_) => {}
-                            },
-                            "Pack_DCL_KW" => match val.parse::<f64>() {
-                                Ok(v) => self.bms_data.pack_dcl_kw = v,
-                                Err(_) => {}
-                            },
-                            "Pack_CCL" => match val.parse::<f64>() {
-                                Ok(v) => self.bms_data.pack_ccl = v,
-                                Err(_) => {}
-                            },
-                            "Pack_CCL_KW" => match val.parse::<f64>() {
-                                Ok(v) => self.bms_data.pack_ccl_kw = v,
-                                Err(_) => {}
-                            },
-                            "Pack_DOD" => match val.parse::<f64>() {
-                                Ok(v) => self.bms_data.pack_dod = v,
-                                Err(_) => {}
-                            },
-                            "Pack_Health" => match val.parse::<f64>() {
-                                Ok(v) => self.bms_data.pack_health = v,
-                                Err(_) => {}
-                            },
-                            "Adaptive_SOC" => match val.parse::<f64>() {
-                                Ok(v) => self.bms_data.adaptive_soc = v,
-                                Err(_) => {}
-                            },
-                            "Pack_SOC" => match val.parse::<f64>() {
-                                Ok(v) => self.bms_data.pack_soc = v,
-                                Err(_) => {}
-                            },
-                            "Adaptive_Amphours" => match val.parse::<f64>() {
-                                Ok(v) => self.bms_data.adaptive_amphours = v,
-                                Err(_) => {}
-                            },
-                            "Pack_Amphours" => match val.parse::<f64>() {
-                                Ok(v) => self.bms_data.pack_amphours = v,
-                                Err(_) => {}
-                            },
+                        // Check if this signal is configured as a fault signal
+                        if let Some(fault_signals) = self.fault_signal_config.get(message_name) {
+                            if fault_signals.contains(&signal) {
+                                self.process_regular_fault(message_name, signal, val);
+                            }
+                        }
 
-                            // Battery/BPS data
-                            "Pack_Summed_Voltage" => match val.parse::<f64>() {
-                                Ok(v) => self.battery_voltage = v,
-                                Err(_) => {}
-                            },
-                            "Pack_Current" => match val.parse::<f64>() {
-                                Ok(v) => self.battery_current = v,
-                                Err(_) => {}
-                            },
-                            "Charge_Level" => match val.parse::<f64>() {
-                                Ok(v) => self.battery_charge = v,
-                                Err(_) => {}
-                            },
-                            "Supp_Temperature_C" => match val.parse::<f64>() {
-                                Ok(v) => self.battery_temp = v,
-                                Err(_) => {}
-                            },
-                            "BPS_ON_Time" => match val.parse::<u64>() {
-                                Ok(v) => self.bps_ontime = v,
-                                Err(_) => {}
-                            },
-                            "BPS_State" => self.bps_state = val.to_string(),
-
-                            _ => {
-                                // Check for fault signals
-                                if signal.starts_with("Fault_") {
-                                    let fault_name = signal.to_string();
-                                    if !val.trim().is_empty()
-                                        && val.trim() != "0"
-                                        && val.trim() != "0.0"
-                                        && val.trim() != "OK"
-                                    {
-                                        // Fault is active
-                                        let new_fault = Fault {
-                                            name: fault_name.clone(),
-                                            timestamp: chrono::Utc::now(),
-                                            is_active: true,
-                                            value: val.to_owned(),
-                                            message_name: message_name.to_string(),
-                                        };
-                                        self.active_faults.insert(fault_name.clone(), new_fault);
-                                    } else {
-                                        // Fault is cleared
-                                        self.active_faults.remove(&fault_name);
-                                    }
+                        // Handle special DTC fault processing (existing logic)
+                        if message_name == "BMS_DTC" {
+                            // DTC faults are already handled in the CAN decoder
+                            // The decoded_str will contain the fault descriptions
+                            if signal.starts_with("Fault_DTC") {
+                                let fault_name = signal.to_string();
+                                if !val.trim().is_empty()
+                                    && val.trim() != "0"
+                                    && val.trim() != "0.0"
+                                {
+                                    // DTC fault is active
+                                    let new_fault = Fault {
+                                        name: fault_name.clone(),
+                                        timestamp: chrono::Utc::now(),
+                                        is_active: true,
+                                        value: val.to_owned(),
+                                        message_name: message_name.to_string(),
+                                    };
+                                    self.active_faults.insert(fault_name.clone(), new_fault);
+                                } else {
+                                    // DTC fault is cleared
+                                    self.active_faults.remove(&fault_name);
                                 }
                             }
                         }
@@ -416,6 +375,120 @@ impl Application for TelemetryGui {
 }
 
 impl TelemetryGui {
+    // Helper method to update GUI values based on the configuration
+    fn update_gui_value(&mut self, gui_value_type: &GuiValueType, value: &str) {
+        match gui_value_type {
+            GuiValueType::Speed => {
+                if let Ok(v) = value.parse::<f64>() {
+                    // Convert RPM to MPH: RPM * wheel_circumference * 60 / 63360
+                    // wheel_circumference = 23.5" * π
+                    self.speed_mph = (v * 23.5 * std::f64::consts::PI * 60.0) / 63360.0;
+                }
+            }
+            GuiValueType::Direction => {
+                self.direction = value.to_string();
+            }
+            GuiValueType::BmsPackDcl => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.pack_dcl = v;
+                }
+            }
+            GuiValueType::BmsPackDclKw => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.pack_dcl_kw = v;
+                }
+            }
+            GuiValueType::BmsPackCcl => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.pack_ccl = v;
+                }
+            }
+            GuiValueType::BmsPackCclKw => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.pack_ccl_kw = v;
+                }
+            }
+            GuiValueType::BmsPackDod => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.pack_dod = v;
+                }
+            }
+            GuiValueType::BmsPackHealth => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.pack_health = v;
+                }
+            }
+            GuiValueType::BmsAdaptiveSoc => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.adaptive_soc = v;
+                }
+            }
+            GuiValueType::BmsPackSoc => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.pack_soc = v;
+                }
+            }
+            GuiValueType::BmsAdaptiveAmphours => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.adaptive_amphours = v;
+                }
+            }
+            GuiValueType::BmsPackAmphours => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.pack_amphours = v;
+                }
+            }
+            GuiValueType::BatteryVoltage => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.battery_voltage = v;
+                }
+            }
+            GuiValueType::BatteryCurrent => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.battery_current = v;
+                }
+            }
+            GuiValueType::BatteryCharge => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.battery_charge = v;
+                }
+            }
+            GuiValueType::BatteryTemp => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.battery_temp = v;
+                }
+            }
+            GuiValueType::BpsOnTime => {
+                if let Ok(v) = value.parse::<u64>() {
+                    self.bps_ontime = v;
+                }
+            }
+            GuiValueType::BpsState => {
+                self.bps_state = value.to_string();
+            }
+        }
+    }
+
+    // Helper method to process regular faults (non-DTC)
+    fn process_regular_fault(&mut self, message_name: &str, signal_name: &str, value: &str) {
+        let fault_key = format!("{}_{}", message_name, signal_name);
+
+        if is_fault_value(value) {
+            // Fault is active
+            let new_fault = Fault {
+                name: signal_name.to_string(),
+                timestamp: chrono::Utc::now(),
+                is_active: true,
+                value: value.to_owned(),
+                message_name: message_name.to_string(),
+            };
+            self.active_faults.insert(fault_key, new_fault);
+        } else {
+            // Fault is cleared
+            self.active_faults.remove(&fault_key);
+        }
+    }
+
     // Helper method to update modem status from the SerialManager
     fn update_modem_status(&mut self) {
         // Update LoRa modem status

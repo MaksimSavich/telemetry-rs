@@ -32,7 +32,7 @@ pub fn create_error_container_style() -> iced::theme::Container {
     }))
 }
 
-// DTC fault definitions for BMS
+// DTC fault definitions for BMS (existing - keep as is)
 pub const DTC_FLAGS_1_FAULTS: &[(u16, &str)] = &[
     (0x0001, "Discharge Limit Enforcement"),
     (0x0002, "Charger Safety Relay"),
@@ -62,3 +62,142 @@ pub const DTC_FLAGS_2_FAULTS: &[(u16, &str)] = &[
     (0x4000, "Input Power Supply"),
     (0x8000, "Charge Limit Enforcement"),
 ];
+
+// Configuration for GUI value updates using (message_name, signal_name) as key
+pub fn get_gui_value_mappings() -> HashMap<(&'static str, &'static str), GuiValueType> {
+    let mut mappings = HashMap::new();
+
+    // Motor data - using MotorController_1 for speed and MotorController_2 for direction
+    mappings.insert(
+        ("MotorController_1", "Actual_Speed_RPM"),
+        GuiValueType::Speed,
+    );
+    mappings.insert(
+        ("MotorController_2", "Status_Of_Command"),
+        GuiValueType::Direction,
+    );
+
+    // BMS data
+    mappings.insert(("BMS_Limits", "Pack_DCL"), GuiValueType::BmsPackDcl);
+    mappings.insert(("BMS_Limits", "Pack_DCL_KW"), GuiValueType::BmsPackDclKw);
+    mappings.insert(("BMS_Limits", "Pack_CCL"), GuiValueType::BmsPackCcl);
+    mappings.insert(("BMS_Limits", "Pack_CCL_KW"), GuiValueType::BmsPackCclKw);
+    mappings.insert(("BMS_State", "Pack_DOD"), GuiValueType::BmsPackDod);
+    mappings.insert(("BMS_State", "Pack_Health"), GuiValueType::BmsPackHealth);
+    mappings.insert(("BMS_State", "Adaptive_SOC"), GuiValueType::BmsAdaptiveSoc);
+    mappings.insert(("BMS_State", "Pack_SOC"), GuiValueType::BmsPackSoc);
+    mappings.insert(
+        ("BMS_Capacity", "Adaptive_Amphours"),
+        GuiValueType::BmsAdaptiveAmphours,
+    );
+    mappings.insert(
+        ("BMS_Capacity", "Pack_Amphours"),
+        GuiValueType::BmsPackAmphours,
+    );
+
+    // Battery/BPS data
+    mappings.insert(
+        ("BMS_Power", "Pack_Summed_Voltage"),
+        GuiValueType::BatteryVoltage,
+    );
+    mappings.insert(("BMS_Power", "Pack_Current"), GuiValueType::BatteryCurrent);
+    mappings.insert(("BMS_State", "Adaptive_SOC"), GuiValueType::BatteryCharge); // Using Adaptive SOC as charge level
+    mappings.insert(
+        ("BPS_System", "Supp_Temperature_C"),
+        GuiValueType::BatteryTemp,
+    );
+    mappings.insert(("BPS_System", "BPS_ON_Time"), GuiValueType::BpsOnTime);
+    mappings.insert(("BPS_System", "BPS_State"), GuiValueType::BpsState);
+
+    mappings
+}
+
+// Enum for different GUI value types
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum GuiValueType {
+    Speed,
+    Direction,
+    BmsPackDcl,
+    BmsPackDclKw,
+    BmsPackCcl,
+    BmsPackCclKw,
+    BmsPackDod,
+    BmsPackHealth,
+    BmsAdaptiveSoc,
+    BmsPackSoc,
+    BmsAdaptiveAmphours,
+    BmsPackAmphours,
+    BatteryVoltage,
+    BatteryCurrent,
+    BatteryCharge,
+    BatteryTemp,
+    BpsOnTime,
+    BpsState,
+}
+
+// Configuration for fault signals - defines which signals in which messages are faults
+pub fn get_fault_signal_config() -> HashMap<&'static str, Vec<&'static str>> {
+    let mut config = HashMap::new();
+
+    // Motor Controller 1 faults
+    config.insert(
+        "MotorController_1",
+        vec![
+            "MC_ERR0", "MC_ERR1", "MC_ERR2", "MC_ERR3", "MC_ERR4", "MC_ERR5", "MC_ERR6", "MC_ERR7",
+            "MC_ERR8", "MC_ERR9", "MC_ERR10", "MC_ERR11", "MC_ERR12", "MC_ERR13", "MC_ERR14",
+            "MC_ERR15",
+        ],
+    );
+
+    // Motor Controller 2 faults
+    config.insert(
+        "MotorController_2",
+        vec![
+            "MC_ERR0", "MC_ERR1", "MC_ERR2", "MC_ERR3", "MC_ERR4", "MC_ERR5", "MC_ERR6", "MC_ERR7",
+            "MC_ERR8", "MC_ERR9", "MC_ERR10", "MC_ERR11", "MC_ERR12", "MC_ERR13", "MC_ERR14",
+            "MC_ERR15",
+        ],
+    );
+
+    // MPPT faults
+    config.insert("MPPT", vec!["MPPT_Fault"]);
+
+    // BPS System faults
+    config.insert(
+        "BPS_System",
+        vec![
+            "BPS_CAN",
+            "BPS_Precharge",
+            "BPS_Main_Pack_Voltage",
+            "BPS_Current",
+            "BPS_DCDC_Voltage",
+            "BPS_Supp_Temperature",
+            "BPS_Supp_Voltage",
+            "BPS_Val1",
+            "BPS_Val2",
+        ],
+    );
+
+    // Note: BMS DTC faults are handled separately via DTC_FLAGS_1_FAULTS and DTC_FLAGS_2_FAULTS
+    // They are not included here because they use a different fault detection mechanism
+
+    config
+}
+
+// Helper function to check if a signal value indicates a fault (for non-DTC faults)
+pub fn is_fault_value(value: &str) -> bool {
+    let trimmed = value.trim();
+    let upper_value = trimmed.to_uppercase();
+
+    // A signal is NOT a fault if it's empty, "0", "0.0", "OK", or "RESERVED"
+    if trimmed.is_empty()
+        || trimmed == "0"
+        || trimmed == "0.0"
+        || upper_value == "OK"
+        || upper_value == "RESERVED"
+    {
+        false
+    } else {
+        true
+    }
+}
