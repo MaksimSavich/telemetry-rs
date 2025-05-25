@@ -154,8 +154,8 @@ BO_ 2364612357 MSGID_0X0CF11F05: 8 MotorController_1
  SG_ Status_Switch_Signals : 40|8@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Status_Controller : 36|4@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Status_Of_Command : 32|4@1+ (1,0) [0|0] "" Vector__XXX
- SG_ Motor_Temperature_C : 16|8@1- (1.0,-30) [-30|225] "C" Vector__XXX
- SG_ Controller_Temperature_C : 8|8@1- (1.0,-40) [-40|215] "C" Vector__XXX
+ SG_ Motor_Temperature_C : 16|8@1- (1.0,-30) [-30|225] "�C" Vector__XXX
+ SG_ Controller_Temperature_C : 8|8@1- (1.0,-40) [-40|215] "�C" Vector__XXX
  SG_ Throttle_Signal : 0|8@1+ (0.0196,0) [0|5] "V" Vector__XXX
 
 BO_ 2364612102 MSGID_0X0CF11E06: 8 MotorController_2
@@ -183,8 +183,8 @@ BO_ 2364612358 MSGID_0X0CF11F06: 8 MotorController_2
  SG_ Status_Switch_Signals : 40|8@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Status_Controller : 36|4@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Status_Of_Command : 32|4@1+ (1,0) [0|0] "" Vector__XXX
- SG_ Motor_Temperature_C : 16|8@1- (1.0,-30) [-30|225] "C" Vector__XXX
- SG_ Controller_Temperature_C : 8|8@1- (1.0,-40) [-40|215] "C" Vector__XXX
+ SG_ Motor_Temperature_C : 16|8@1- (1.0,-30) [-30|225] "�C" Vector__XXX
+ SG_ Controller_Temperature_C : 8|8@1- (1.0,-40) [-40|215] "�C" Vector__XXX
  SG_ Throttle_Signal : 0|8@1+ (0.0196,0) [0|5] "V" Vector__XXX
 
 BO_ 0 MSGID_0X000: 8 MPPT
@@ -194,8 +194,8 @@ BO_ 0 MSGID_0X000: 8 MPPT
  SG_ Input_Voltage_V : 0|16@1- (0.01,0) [-327.0|327.0] "V" Vector__XXX
 
 BO_ 1 MSGID_0X001: 5 MPPT
- SG_ Heatsink_Temperature_C : 32|8@1- (1,0) [-128|127] "C" Vector__XXX
- SG_ Ambient_Temperature_C : 24|8@1- (1,0) [-128|127] "C" Vector__XXX
+ SG_ Heatsink_Temperature_C : 32|8@1- (1,0) [-128|127] "�C" Vector__XXX
+ SG_ Ambient_Temperature_C : 24|8@1- (1,0) [-128|127] "�C" Vector__XXX
  SG_ Enabled : 16|8@1+ (1,0) [0|0] "" Vector__XXX
  SG_ MPPT_Fault : 8|8@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Mode : 0|8@1+ (1,0) [0|0] "" Vector__XXX
@@ -245,17 +245,17 @@ BA_ "GenMsgCycleTime" BO_ 1910 100;
 BA_ "GenMsgCycleTime" BO_ 1911 100;
 VAL_ 2364612101 MC_ERR15 0 "OK" 1 "Hall Galvanometer sensor" ;
 VAL_ 2364612101 MC_ERR14 0 "OK" 1 "Motor over-temperature" ;
-VAL_ 2364612101 MC_ERR13 0 "OK" 1 "Reserved" ;
-VAL_ 2364612101 MC_ERR12 0 "OK" 1 "Reserved" ;
+VAL_ 2364612101 MC_ERR13 0 "OK" 1 "RESERVED" ;
+VAL_ 2364612101 MC_ERR12 0 "OK" 1 "RESERVED" ;
 VAL_ 2364612101 MC_ERR11 0 "OK" 1 "Angle sensor error" ;
 VAL_ 2364612101 MC_ERR10 0 "OK" 1 "Hall throttle is open or short-circuit" ;
 VAL_ 2364612101 MC_ERR9 0 "OK" 1 "Internal reset" ;
-VAL_ 2364612101 MC_ERR8 0 "OK" 1 "Reserved" ;
+VAL_ 2364612101 MC_ERR8 0 "OK" 1 "RESERVED" ;
 VAL_ 2364612101 MC_ERR7 0 "OK" 1 "Throttle error at power-up" ;
 VAL_ 2364612101 MC_ERR6 0 "OK" 1 "Over temperature" ;
 VAL_ 2364612101 MC_ERR5 0 "OK" 1 "Internal volts fault" ;
 VAL_ 2364612101 MC_ERR4 0 "OK" 1 "Stall" ;
-VAL_ 2364612101 MC_ERR3 0 "OK" 1 "Reserved" ;
+VAL_ 2364612101 MC_ERR3 0 "OK" 1 "RESERVED" ;
 VAL_ 2364612101 MC_ERR2 0 "OK" 1 "Low voltage" ;
 VAL_ 2364612101 MC_ERR1 0 "OK" 1 "Over voltage" ;
 VAL_ 2364612101 MC_ERR0 0 "OK" 1 "Identification error" ;
@@ -263,17 +263,17 @@ VAL_ 2364612357 Status_Controller 0 "Stationary" 1 "Forward" 2 "Backward" ;
 VAL_ 2364612357 Status_Of_Command 0 "Neutral" 1 "Forward" 2 "Backward" ;
 VAL_ 2364612102 MC_ERR15 0 "OK" 1 "Hall Galvanometer sensor" ;
 VAL_ 2364612102 MC_ERR14 0 "OK" 1 "Motor over-temperature" ;
-VAL_ 2364612102 MC_ERR13 0 "OK" 1 "Reserved" ;
-VAL_ 2364612102 MC_ERR12 0 "OK" 1 "Reserved" ;
+VAL_ 2364612102 MC_ERR13 0 "OK" 1 "RESERVED" ;
+VAL_ 2364612102 MC_ERR12 0 "OK" 1 "RESERVED" ;
 VAL_ 2364612102 MC_ERR11 0 "OK" 1 "Angle sensor error" ;
 VAL_ 2364612102 MC_ERR10 0 "OK" 1 "Hall throttle is open or short-circuit" ;
 VAL_ 2364612102 MC_ERR9 0 "OK" 1 "Internal reset" ;
-VAL_ 2364612102 MC_ERR8 0 "OK" 1 "Reserved" ;
+VAL_ 2364612102 MC_ERR8 0 "OK" 1 "RESERVED" ;
 VAL_ 2364612102 MC_ERR7 0 "OK" 1 "Throttle error at power-up" ;
 VAL_ 2364612102 MC_ERR6 0 "OK" 1 "Over temperature" ;
 VAL_ 2364612102 MC_ERR5 0 "OK" 1 "Internal volts fault" ;
 VAL_ 2364612102 MC_ERR4 0 "OK" 1 "Stall" ;
-VAL_ 2364612102 MC_ERR3 0 "OK" 1 "Reserved" ;
+VAL_ 2364612102 MC_ERR3 0 "OK" 1 "RESERVED" ;
 VAL_ 2364612102 MC_ERR2 0 "OK" 1 "Low voltage" ;
 VAL_ 2364612102 MC_ERR1 0 "OK" 1 "Over voltage" ;
 VAL_ 2364612102 MC_ERR0 0 "OK" 1 "Identification error" ;
@@ -281,13 +281,13 @@ VAL_ 2364612358 Status_Controller 0 "Stationary" 1 "Forward" 2 "Backward" ;
 VAL_ 2364612358 Status_Of_Command 0 "Neutral" 1 "Forward" 2 "Backward" ;
 VAL_ 1 MPPT_Fault 0 "OK" 1 "Configuration Error" 2 "Input Over Voltage" 3 "Output Over Voltage" 4 "Output Over Current" 5 "Input Over Current" 6 "Input Under Current" 7 "Phase Over Current" 8 "General Fault" ;
 VAL_ 1911 BPS_State 0 "STANDBY" 1 "PRIMARY" 2 "ACCESSORY" 3 "MPPT_CHARGING" 4 "WALL_CHARGING" 5 "FAULT" ;
-VAL_ 1911 BPS_CAN 0 "OK" 1 "BMS Fault" 2 "Timeout" 3 "Reserved" ;
-VAL_ 1911 BPS_Precharge 0 "OK" 1 "Precharge Fail" 2 "Reserved" 3 "Reserved" ;
-VAL_ 1911 BPS_Main_Pack_Voltage 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "Reserved" ;
-VAL_ 1911 BPS_Current 0 "OK" 1 "Over Current" 2 "Current Sensor Disconnected" 3 "Reserved" ;
-VAL_ 1911 BPS_DCDC_Voltage 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "Reserved" ;
-VAL_ 1911 BPS_Supp_Temperature 0 "OK" 1 "Under Temperature" 2 "Over Temperature" 3 "Reserved" ;
-VAL_ 1911 BPS_Supp_Voltage 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "Reserved" ;
+VAL_ 1911 BPS_CAN 0 "OK" 1 "BMS Fault" 2 "Timeout" 3 "RESERVED" ;
+VAL_ 1911 BPS_Precharge 0 "OK" 1 "Precharge Fail" 2 "RESERVED" 3 "RESERVED" ;
+VAL_ 1911 BPS_Main_Pack_Voltage 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "RESERVED" ;
+VAL_ 1911 BPS_Current 0 "OK" 1 "Over Current" 2 "Current Sensor Disconnected" 3 "RESERVED" ;
+VAL_ 1911 BPS_DCDC_Voltage 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "RESERVED" ;
+VAL_ 1911 BPS_Supp_Temperature 0 "OK" 1 "Under Temperature" 2 "Over Temperature" 3 "RESERVED" ;
+VAL_ 1911 BPS_Supp_Voltage 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "RESERVED" ;
 
 
 
