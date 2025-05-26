@@ -7,15 +7,17 @@
 │  ├── can.rs
 │  ├── gui_modules
 │  │  ├── battery_box.rs
+│  │  ├── bms_info_box.rs
 │  │  ├── bps_box.rs
 │  │  ├── fault_panel.rs
 │  │  ├── layout.rs
 │  │  ├── mod.rs
-│  │  ├── serial_panel.rs
+│  │  ├── modem_status.rs
+│  │  ├── radio_status.rs
 │  │  ├── status_box.rs
 │  │  └── types.rs
 │  ├── gui.rs
-│  ├── layout.rs
+│  ├── logger.rs
 │  ├── main.rs
 │  ├── packet.options
 │  ├── packet.proto
