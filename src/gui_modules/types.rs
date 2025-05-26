@@ -64,50 +64,77 @@ pub const DTC_FLAGS_2_FAULTS: &[(u16, &str)] = &[
 ];
 
 // Configuration for GUI value updates using (message_name, signal_name) as key
-pub fn get_gui_value_mappings() -> HashMap<(&'static str, &'static str), GuiValueType> {
+// Returns a Vec of GuiValueType since one signal might update multiple GUI values
+// Returns a Vec of GuiValueType since one signal might update multiple GUI values
+pub fn get_gui_value_mappings() -> HashMap<(&'static str, &'static str), Vec<GuiValueType>> {
     let mut mappings = HashMap::new();
 
     // Motor data - using MotorController_1 for speed and MotorController_2 for direction
     mappings.insert(
         ("MotorController_1", "Actual_Speed_RPM"),
-        GuiValueType::Speed,
+        vec![GuiValueType::Speed],
     );
     mappings.insert(
         ("MotorController_2", "Status_Of_Command"),
-        GuiValueType::Direction,
+        vec![GuiValueType::Direction],
     );
 
     // BMS data
-    mappings.insert(("BMS_Limits", "Pack_DCL"), GuiValueType::BmsPackDcl);
-    mappings.insert(("BMS_Limits", "Pack_DCL_KW"), GuiValueType::BmsPackDclKw);
-    mappings.insert(("BMS_Limits", "Pack_CCL"), GuiValueType::BmsPackCcl);
-    mappings.insert(("BMS_Limits", "Pack_CCL_KW"), GuiValueType::BmsPackCclKw);
-    mappings.insert(("BMS_State", "Pack_DOD"), GuiValueType::BmsPackDod);
-    mappings.insert(("BMS_State", "Pack_Health"), GuiValueType::BmsPackHealth);
-    mappings.insert(("BMS_State", "Adaptive_SOC"), GuiValueType::BmsAdaptiveSoc);
-    mappings.insert(("BMS_State", "Pack_SOC"), GuiValueType::BmsPackSoc);
+    mappings.insert(("BMS_Limits", "Pack_DCL"), vec![GuiValueType::BmsPackDcl]);
+    mappings.insert(
+        ("BMS_Limits", "Pack_DCL_KW"),
+        vec![GuiValueType::BmsPackDclKw],
+    );
+    mappings.insert(("BMS_Limits", "Pack_CCL"), vec![GuiValueType::BmsPackCcl]);
+    mappings.insert(
+        ("BMS_Limits", "Pack_CCL_KW"),
+        vec![GuiValueType::BmsPackCclKw],
+    );
+    mappings.insert(("BMS_State", "Pack_DOD"), vec![GuiValueType::BmsPackDod]);
+    mappings.insert(
+        ("BMS_State", "Pack_Health"),
+        vec![GuiValueType::BmsPackHealth],
+    );
+    mappings.insert(
+        ("BMS_State", "Adaptive_SOC"),
+        vec![GuiValueType::BmsAdaptiveSoc],
+    );
+    mappings.insert(
+        ("BMS_State", "Pack_SOC"),
+        vec![GuiValueType::BmsPackSoc, GuiValueType::BatteryCharge],
+    ); // One signal, two GUI updates
     mappings.insert(
         ("BMS_Capacity", "Adaptive_Amphours"),
-        GuiValueType::BmsAdaptiveAmphours,
+        vec![GuiValueType::BmsAdaptiveAmphours],
     );
     mappings.insert(
         ("BMS_Capacity", "Pack_Amphours"),
-        GuiValueType::BmsPackAmphours,
+        vec![GuiValueType::BmsPackAmphours],
     );
 
     // Battery/BPS data
     mappings.insert(
         ("BMS_Power", "Pack_Summed_Voltage"),
-        GuiValueType::BatteryVoltage,
+        vec![GuiValueType::BatteryVoltage],
     );
-    mappings.insert(("BMS_Power", "Pack_Current"), GuiValueType::BatteryCurrent);
-    mappings.insert(("BMS_State", "Adaptive_SOC"), GuiValueType::BatteryCharge); // Using Adaptive SOC as charge level
     mappings.insert(
-        ("BPS_System", "Supp_Temperature_C"),
-        GuiValueType::BatteryTemp,
+        ("BMS_Power", "Pack_Current"),
+        vec![GuiValueType::BatteryCurrent],
     );
-    mappings.insert(("BPS_System", "BPS_ON_Time"), GuiValueType::BpsOnTime);
-    mappings.insert(("BPS_System", "BPS_State"), GuiValueType::BpsState);
+    mappings.insert(
+        ("BMS_Temperature", "Average_Temperature"),
+        vec![GuiValueType::BatteryTemp],
+    );
+    mappings.insert(
+        ("BMS_Temperature", "High_Temperature"),
+        vec![GuiValueType::BatteryTempHi],
+    );
+    mappings.insert(
+        ("BMS_Temperature", "Low_Temperature"),
+        vec![GuiValueType::BatteryTempLo],
+    );
+    mappings.insert(("BPS_System", "BPS_ON_Time"), vec![GuiValueType::BpsOnTime]);
+    mappings.insert(("BPS_System", "BPS_State"), vec![GuiValueType::BpsState]);
 
     mappings
 }
@@ -131,6 +158,8 @@ pub enum GuiValueType {
     BatteryCurrent,
     BatteryCharge,
     BatteryTemp,
+    BatteryTempHi,
+    BatteryTempLo,
     BpsOnTime,
     BpsState,
 }
@@ -173,8 +202,6 @@ pub fn get_fault_signal_config() -> HashMap<&'static str, Vec<&'static str>> {
             "BPS_DCDC_Voltage",
             "BPS_Supp_Temperature",
             "BPS_Supp_Voltage",
-            "BPS_Val1",
-            "BPS_Val2",
         ],
     );
 

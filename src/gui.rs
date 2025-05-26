@@ -26,6 +26,8 @@ pub struct TelemetryGui {
     battery_current: f64,
     battery_charge: f64,
     battery_temp: f64,
+    battery_temp_lo: f64,
+    battery_temp_hi: f64,
 
     // BPS data
     bps_state: String,
@@ -54,7 +56,7 @@ pub struct TelemetryGui {
     rfd_connected: bool,
 
     // Configuration mappings
-    gui_value_mappings: HashMap<(&'static str, &'static str), GuiValueType>,
+    gui_value_mappings: HashMap<(&'static str, &'static str), Vec<GuiValueType>>,
     fault_signal_config: HashMap<&'static str, Vec<&'static str>>,
 }
 
@@ -99,6 +101,8 @@ impl Application for TelemetryGui {
                 battery_current: 0.0,
                 battery_charge: 0.0,
                 battery_temp: 0.0,
+                battery_temp_hi: 0.0,
+                battery_temp_lo: 0.0,
                 bps_ontime: 0,
                 bps_state: "Standby".into(),
                 active_faults: HashMap::new(),
@@ -155,6 +159,7 @@ impl Application for TelemetryGui {
                     0xB1 => "BMS_Power",
                     0xC2 => "BMS_State",
                     0xD3 => "BMS_Capacity",
+                    0xF5 => "BMS_Temperature",
                     0x776 | 0x777 => "BPS_System",
                     0x0 | 0x1 => "MPPT",
                     // Motor Controller 1 (ID ending in 05)
@@ -180,12 +185,14 @@ impl Application for TelemetryGui {
                 for line in decoded_str.lines() {
                     if let Some((signal, val)) = line.split_once(": ") {
                         // Check if this signal updates a GUI value
-                        let gui_value_type_opt = self
-                            .gui_value_mappings
-                            .get(&(message_name, signal))
-                            .cloned();
-                        if let Some(gui_value_type) = gui_value_type_opt {
-                            self.update_gui_value(&gui_value_type, val);
+                        if let Some(gui_value_types) =
+                            self.gui_value_mappings.get(&(message_name, signal))
+                        {
+                            // Clone the gui_value_types to avoid borrowing self
+                            let gui_value_types_cloned = gui_value_types.clone();
+                            for gui_value_type in gui_value_types_cloned {
+                                self.update_gui_value(&gui_value_type, val);
+                            }
                         }
 
                         // Check if this signal is configured as a fault signal
@@ -280,6 +287,8 @@ impl Application for TelemetryGui {
             current: self.battery_current,
             charge: self.battery_charge,
             temp: self.battery_temp,
+            temp_lo: self.battery_temp_lo,
+            temp_hi: self.battery_temp_hi,
         };
 
         let bps_data = BpsData {
@@ -456,6 +465,16 @@ impl TelemetryGui {
             GuiValueType::BatteryTemp => {
                 if let Ok(v) = value.parse::<f64>() {
                     self.battery_temp = v;
+                }
+            }
+            GuiValueType::BatteryTempLo => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.battery_temp_lo = v;
+                }
+            }
+            GuiValueType::BatteryTempHi => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.battery_temp_hi = v;
                 }
             }
             GuiValueType::BpsOnTime => {
