@@ -55,6 +55,10 @@ pub struct TelemetryGui {
     lora_connected: bool,
     rfd_connected: bool,
 
+    // Enable/disable flags
+    lora_enabled: bool,
+    rfd_enabled: bool,
+
     // Configuration mappings
     gui_value_mappings: HashMap<(&'static str, &'static str), Vec<GuiValueType>>,
     fault_signal_config: HashMap<&'static str, Vec<&'static str>>,
@@ -64,14 +68,20 @@ impl Application for TelemetryGui {
     type Executor = iced::executor::Default;
     type Message = Message;
     type Theme = iced::Theme;
-    type Flags = ();
+    type Flags = (bool, bool); // (lora_enabled, rfd_enabled)
 
     fn theme(&self) -> Self::Theme {
         iced::Theme::Dark
     }
 
-    fn new(_flags: ()) -> (Self, Command<Message>) {
-        let serial_manager = SerialManager::new();
+    fn new(flags: Self::Flags) -> (Self, Command<Message>) {
+        let (lora_enabled, rfd_enabled) = flags;
+
+        let mut serial_manager = SerialManager::new();
+
+        // Set enable/disable flags
+        serial_manager.set_lora_enabled(lora_enabled);
+        serial_manager.set_rfd_enabled(rfd_enabled);
 
         // Start the background scanning for modems
         let mut sm = serial_manager.clone();
@@ -118,6 +128,8 @@ impl Application for TelemetryGui {
                 serial_manager,
                 lora_connected: false,
                 rfd_connected: false,
+                lora_enabled,
+                rfd_enabled,
                 current_time: Local::now().format("%H:%M:%S").to_string(),
                 bms_data: BmsData::default(),
 
@@ -130,7 +142,11 @@ impl Application for TelemetryGui {
     }
 
     fn title(&self) -> String {
-        "Telemetry RS".into()
+        format!(
+            "Telemetry RS - LoRa: {} | RFD: {}",
+            if self.lora_enabled { "ON" } else { "OFF" },
+            if self.rfd_enabled { "ON" } else { "OFF" }
+        )
     }
 
     fn update(&mut self, message: Message) -> Command<Message> {
@@ -298,7 +314,10 @@ impl Application for TelemetryGui {
 
         // Create UI elements
         let can_status = can_status_indicator(self.can_connected);
-        let radio_status = radio_status_indicators(self.lora_connected, self.rfd_connected);
+        let radio_status = radio_status_indicators(
+            self.lora_connected && self.lora_enabled,
+            self.rfd_connected && self.rfd_enabled,
+        );
         let bms_info = bms_info_box(&self.bms_data);
         let speed_direction = direction_speed_display(&self.direction, self.speed_mph);
         let battery_info = battery_box(&battery_data);
@@ -510,23 +529,33 @@ impl TelemetryGui {
 
     // Helper method to update modem status from the SerialManager
     fn update_modem_status(&mut self) {
-        // Update LoRa modem status
-        if let Ok(lora_status) = self.serial_manager.lora_status.lock() {
-            self.lora_connected = lora_status.connected;
+        // Only check status for enabled modems
+        if self.lora_enabled {
+            if let Ok(lora_status) = self.serial_manager.lora_status.lock() {
+                self.lora_connected = lora_status.connected;
+            }
+        } else {
+            self.lora_connected = false;
         }
 
-        // Update RFD modem status
-        if let Ok(rfd_status) = self.serial_manager.rfd_status.lock() {
-            self.rfd_connected = rfd_status.connected;
+        if self.rfd_enabled {
+            if let Ok(rfd_status) = self.serial_manager.rfd_status.lock() {
+                self.rfd_connected = rfd_status.connected;
+            }
+        } else {
+            self.rfd_connected = false;
         }
     }
 
     // Helper method to send CAN frame to enabled modems
     fn send_can_frame_to_modems(&self, can_id: u32, data: &[u8]) {
-        // Send to all connected modems (SerialManager handles the enabled check)
-        if let Err(e) = self.serial_manager.send_can_frame(can_id, data) {
-            // Don't print errors for every frame to avoid flooding console
-            // The SerialManager already handles retries and connection status
+        // Only send to enabled modems
+        if (self.lora_enabled && self.lora_connected) || (self.rfd_enabled && self.rfd_connected) {
+            if let Err(e) = self.serial_manager.send_can_frame(can_id, data) {
+                // Don't print errors for every frame to avoid flooding console
+                // The SerialManager already handles retries and connection status
+                eprintln!("Failed to send CAN frame to modems: {}", e);
+            }
         }
     }
 }
