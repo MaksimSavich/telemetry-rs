@@ -49,7 +49,7 @@ BO_ 160 MSGID_0XA0: 8 BMS
 BO_ 177 MSGID_0XB1: 8 BMS
  SG_ Pack_kW_Power : 48|16@1+ (0.1,0) [0|0] "kW"  Third_Party_Device
  SG_ Pack_Open_Voltage : 32|16@1+ (0.1,0) [0|0] "Volts"  Third_Party_Device
- SG_ Pack_Summed_Voltage : 16|16@1+ (0.01,0) [0|0] "Volts"  Third_Party_Device
+ SG_ Pack_Summed_Voltage : 16|16@1+ (0.1,0) [0|0] "Volts"  Third_Party_Device
  SG_ Pack_Current : 0|16@1- (0.1,0) [0|0] "Amps"  Third_Party_Device
 
 BO_ 194 MSGID_0XC2: 8 BMS
