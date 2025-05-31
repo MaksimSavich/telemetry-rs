@@ -208,16 +208,19 @@ BO_ 1910 MSGID_0X776: 8 BPS
 
 BO_ 1911 MSGID_0X777: 8 BPS
  SG_ BPS_State : 61|3@1+ (1,0) [0|0] "" Vector__XXX
- SG_ BPS_ON_Time : 45|16@1+ (0.01,0) [0|0] "" Vector__XXX
- SG_ BPS_Val2 : 29|16@1+ (0.01,0) [0|0] "" Vector__XXX
- SG_ BPS_Val1 : 13|16@1+ (0.01,0) [0|0] "" Vector__XXX
- SG_ BPS_CAN : 11|2@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BPS_ON_Time : 45|16@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BPS_Faulted_Value : 29|16@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ Charge_Enabled_Fault : 15|1@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ Estop_Fault : 14|1@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BPS_BMS_CAN_Timeout : 13|1@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BPS_BMS_CAN_Warning : 12|1@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BPS_BMS_CAN_Fault : 11|1@1+ (1,0) [0|0] "" Vector__XXX
  SG_ BPS_Precharge : 10|1@1+ (1,0) [0|0] "" Vector__XXX
- SG_ BPS_Main_Pack_Voltage : 8|2@1+ (1,0) [0|0] "" Vector__XXX
- SG_ BPS_Current : 6|2@1+ (1,0) [0|0] "" Vector__XXX
- SG_ BPS_DCDC_Voltage : 4|2@1+ (1,0) [0|0] "" Vector__XXX
- SG_ BPS_Supp_Temperature : 2|2@1+ (1,0) [0|0] "" Vector__XXX
- SG_ BPS_Supp_Voltage : 0|2@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ Main_Pack_Voltage : 8|2@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ Supp_Charge_Current : 6|2@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ DCDC_Voltage : 4|2@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ Supp_Temperature : 2|2@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ Supp_Voltage : 0|2@1+ (1,0) [0|0] "" Vector__XXX
 
 
 
@@ -281,13 +284,17 @@ VAL_ 2364612358 Status_Controller 0 "Stationary" 1 "Forward" 2 "Backward" ;
 VAL_ 2364612358 Status_Of_Command 0 "Neutral" 1 "Forward" 2 "Backward" ;
 VAL_ 1 MPPT_Fault 0 "OK" 1 "Configuration Error" 2 "Input Over Voltage" 3 "Output Over Voltage" 4 "Output Over Current" 5 "Input Over Current" 6 "Input Under Current" 7 "Phase Over Current" 8 "General Fault" ;
 VAL_ 1911 BPS_State 0 "STANDBY" 1 "PRIMARY" 2 "ACCESSORY" 3 "MPPT_CHARGING" 4 "WALL_CHARGING" 5 "FAULT" ;
-VAL_ 1911 BPS_CAN 0 "OK" 1 "BMS Fault" 2 "Timeout" 3 "RESERVED" ;
-VAL_ 1911 BPS_Precharge 0 "OK" 1 "Precharge Fail" 2 "RESERVED" 3 "RESERVED" ;
-VAL_ 1911 BPS_Main_Pack_Voltage 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "RESERVED" ;
-VAL_ 1911 BPS_Current 0 "OK" 1 "Over Current" 2 "Current Sensor Disconnected" 3 "RESERVED" ;
-VAL_ 1911 BPS_DCDC_Voltage 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "RESERVED" ;
-VAL_ 1911 BPS_Supp_Temperature 0 "OK" 1 "Under Temperature" 2 "Over Temperature" 3 "RESERVED" ;
-VAL_ 1911 BPS_Supp_Voltage 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "RESERVED" ;
+VAL_ 1911 Charge_Enabled_Fault 0 "OK" 1 "Charging Failed to Enable" ;
+VAL_ 1911 Estop_Fault 0 "OK" 1 "Estop Faulted" ;
+VAL_ 1911 BPS_BMS_CAN_Timeout 0 "OK" 1 "BMS CAN Timeout" ;
+VAL_ 1911 BPS_BMS_CAN_Warning 0 "OK" 1 "BMS CAN Warning" ;
+VAL_ 1911 BPS_BMS_CAN_Fault 0 "OK" 1 "BMS CAN Fault" ;
+VAL_ 1911 BPS_Precharge 0 "OK" 1 "Precharge Failed" ;
+VAL_ 1911 Main_Pack_Voltage 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "RESERVED" ;
+VAL_ 1911 Supp_Charge_Current 0 "OK" 1 "Over Current" 2 "Current Sensor Disconnected" 3 "RESERVED" ;
+VAL_ 1911 DCDC_Voltage 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "RESERVED" ;
+VAL_ 1911 Supp_Temperature 0 "OK" 1 "Under Temperature" 2 "Over Temperature" 3 "RESERVED" ;
+VAL_ 1911 Supp_Voltage 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "RESERVED" ;
 
 
 

@@ -195,13 +195,18 @@ pub fn get_fault_signal_config() -> HashMap<&'static str, Vec<&'static str>> {
     config.insert(
         "BPS_System",
         vec![
-            "BPS_CAN",
+            "Supp_Voltage",
+            "Supp_Temperature",
+            "DCDC_Voltage",
+            "Supp_Charge_Current",
+            "Main_Pack_Voltage",
             "BPS_Precharge",
-            "BPS_Main_Pack_Voltage",
-            "BPS_Current",
-            "BPS_DCDC_Voltage",
-            "BPS_Supp_Temperature",
-            "BPS_Supp_Voltage",
+            "BPS_BMS_CAN_Fault",
+            "BPS_BMS_CAN_Warning",
+            "BPS_BMS_CAN_Timeout",
+            "Estop_Fault",
+            "Charge_Enabled_Fault",
+            "BPS_Faulted_Value",
         ],
     );
 
