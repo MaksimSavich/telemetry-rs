@@ -171,11 +171,11 @@ impl Application for TelemetryGui {
                 // Determine message name from ID
                 let message_name = match raw_id {
                     0x300 => "BMS_DTC",
-                    0xA0 => "BMS_Limits",
-                    0xB1 => "BMS_Power",
-                    0xC2 => "BMS_State",
-                    0xD3 => "BMS_Capacity",
-                    0xF5 => "BMS_Temperature",
+                    0x310 => "BMS_Limits",
+                    0x320 => "BMS_Power",
+                    0x330 => "BMS_State",
+                    0x340 => "BMS_Capacity",
+                    0x360 => "BMS_Temperature",
                     0x776 | 0x777 => "BPS_System",
                     0x0 | 0x1 => "MPPT",
                     // Motor Controller 1 (ID ending in 05)
@@ -346,7 +346,7 @@ impl Application for TelemetryGui {
             {
                 let decoder = self.decoder.clone();
                 subscription::unfold("can_subscription", decoder, |decoder| async {
-                    let socket = match CanSocket::open("can0") {
+                    let socket = match CanSocket::open("vcan0") {
                         Ok(s) => s,
                         Err(e) => {
                             eprintln!("Failed to open CAN socket: {}", e);
