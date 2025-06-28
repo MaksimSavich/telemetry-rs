@@ -201,7 +201,6 @@ impl Application for TelemetryGui {
                 for line in decoded_str.lines() {
                     if let Some((signal, val)) = line.split_once(": ") {
                         // Check if this signal updates a GUI value
-                        println!("Processing signal: {} = {}", signal, val);
                         if let Some(gui_value_types) =
                             self.gui_value_mappings.get(&(message_name, signal))
                         {
