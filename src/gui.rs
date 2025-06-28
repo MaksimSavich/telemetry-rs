@@ -203,9 +203,9 @@ impl Application for TelemetryGui {
                         // Check if this signal updates a GUI value
                         if let Some(gui_value_types) =
                             self.gui_value_mappings.get(&(message_name, signal))
-                            println!("Processing signal: {}", message_name);
                         {
                             // Clone the gui_value_types to avoid borrowing self
+                            println!("Processing signal: {}", message_name);
                             let gui_value_types_cloned = gui_value_types.clone();
                             for gui_value_type in gui_value_types_cloned {
                                 self.update_gui_value(&gui_value_type, val);
