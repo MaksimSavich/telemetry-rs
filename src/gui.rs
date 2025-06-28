@@ -179,18 +179,18 @@ impl Application for TelemetryGui {
                     0x776 | 0x777 => "BPS_System",
                     0x0 | 0x1 => "MPPT",
                     // Motor Controller 1 (ID ending in 05)
-                    id if id == 0x8CF11E05
-                        || id == 0x8CF11F05
-                        || (id & 0xFFFFFF0F) == 0x8CF11E05
-                        || (id & 0xFFFFFF0F) == 0x8CF11F05 =>
+                    id if id == 0x0CF11E05
+                        || id == 0x0CF11F05
+                        || (id & 0xFFFFFF0F) == 0x0CF11E05
+                        || (id & 0xFFFFFF0F) == 0x0CF11F05 =>
                     {
                         "MotorController_1"
                     }
                     // Motor Controller 2 (ID ending in 06)
-                    id if id == 0x8CF11E06
+                    id if id == 0x0CF11E06
                         || id == 0x8CF11F06
-                        || (id & 0xFFFFFF0F) == 0x8CF11E06
-                        || (id & 0xFFFFFF0F) == 0x8CF11F06 =>
+                        || (id & 0xFFFFFF0F) == 0x0CF11E06
+                        || (id & 0xFFFFFF0F) == 0x0CF11F06 =>
                     {
                         "MotorController_2"
                     }
@@ -201,11 +201,11 @@ impl Application for TelemetryGui {
                 for line in decoded_str.lines() {
                     if let Some((signal, val)) = line.split_once(": ") {
                         // Check if this signal updates a GUI value
+                        println!("Processing signal: {} = {}", signal, val);
                         if let Some(gui_value_types) =
                             self.gui_value_mappings.get(&(message_name, signal))
                         {
                             // Clone the gui_value_types to avoid borrowing self
-                            println!("Processing signal: {}", message_name);
                             let gui_value_types_cloned = gui_value_types.clone();
                             for gui_value_type in gui_value_types_cloned {
                                 self.update_gui_value(&gui_value_type, val);
