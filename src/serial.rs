@@ -527,6 +527,8 @@ impl SerialManager {
         payload.extend_from_slice(&can_id.to_be_bytes());
         payload.extend_from_slice(data);
 
+        println!("CAN ID: {:08X}, Data: {:?}", can_id, payload);
+
         // Use try_lock to avoid blocking
         let mut rfd_conn = match self.rfd_connection.try_lock() {
             Ok(guard) => guard,
