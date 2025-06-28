@@ -19,8 +19,10 @@ const RFD_SCAN_INTERVAL_MS: u64 = 5000; // Scan every 5 seconds
 const LORA_BAUD_RATE: u32 = 115200;
 const LORA_SCAN_INTERVAL_MS: u64 = 5000; // Scan every 5 seconds
 
-// Connection monitoring
-const CONNECTION_CHECK_INTERVAL_MS: u64 = 2000; // Check connection every 2 seconds
+// Connection monitoring - improved intervals
+const CONNECTION_CHECK_INTERVAL_MS: u64 = 10000; // Check connection every 10 seconds (less frequent)
+const TRANSMISSION_TIMEOUT_MS: u64 = 1000; // Timeout for transmission operations
+const CONNECTION_GRACE_PERIOD_MS: u64 = 30000; // Consider disconnected after 30 seconds of no successful transmission
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ModemType {
@@ -34,6 +36,8 @@ pub struct ModemStatus {
     pub port_name: Option<String>,
     pub last_success: Option<Instant>,
     pub error_message: Option<String>,
+    pub last_transmission_attempt: Option<Instant>,
+    pub consecutive_failures: u32,
 }
 
 impl ModemStatus {
@@ -43,6 +47,8 @@ impl ModemStatus {
             port_name: None,
             last_success: None,
             error_message: None,
+            last_transmission_attempt: None,
+            consecutive_failures: 0,
         }
     }
 }
@@ -50,6 +56,7 @@ impl ModemStatus {
 struct ModemConnection {
     port: Option<Box<dyn SerialPort>>,
     modem_type: ModemType,
+    last_health_check: Instant,
 }
 
 pub struct SerialManager {
@@ -68,11 +75,13 @@ impl SerialManager {
         let lora_connection = Arc::new(Mutex::new(ModemConnection {
             port: None,
             modem_type: ModemType::Lora,
+            last_health_check: Instant::now(),
         }));
 
         let rfd_connection = Arc::new(Mutex::new(ModemConnection {
             port: None,
             modem_type: ModemType::Rfd900x,
+            last_health_check: Instant::now(),
         }));
 
         let instance = Self {
@@ -82,7 +91,7 @@ impl SerialManager {
             rfd_status: Arc::new(Mutex::new(ModemStatus::new())),
             scan_thread: None,
             scan_running: Arc::new(Mutex::new(false)),
-            lora_enabled: Arc::new(Mutex::new(true)),
+            lora_enabled: Arc::new(Mutex::new(false)), // Default to disabled
             rfd_enabled: Arc::new(Mutex::new(true)),
         };
 
@@ -164,56 +173,55 @@ impl SerialManager {
 
                 let now = Instant::now();
 
-                // Check if connections are still alive
+                // Passive connection health monitoring (based on transmission success/failure)
                 if now.duration_since(last_connection_check).as_millis()
                     >= CONNECTION_CHECK_INTERVAL_MS as u128
                 {
-                    // Check LoRa connection
+                    // Check LoRa connection health passively
                     if *lora_enabled.lock().unwrap() {
-                        let mut lora_conn = lora_connection.lock().unwrap();
                         let mut status = lora_status.lock().unwrap();
-
                         if status.connected {
-                            // Verify LoRa connection is still active
-                            if let Some(port) = &mut lora_conn.port {
-                                if let Err(e) = Self::verify_lora_connection(port) {
-                                    // Connection failed
-                                    status.connected = false;
-                                    status.error_message = Some(format!("Connection lost: {}", e));
-                                    lora_conn.port = None;
-                                    println!("LoRa connection lost: {}", e);
-                                } else {
-                                    status.last_success = Some(Instant::now());
-                                }
+                            // Check if we've had recent transmission failures or it's been too long since last success
+                            let should_disconnect = if let Some(last_success) = status.last_success
+                            {
+                                now.duration_since(last_success).as_millis()
+                                    > CONNECTION_GRACE_PERIOD_MS as u128
                             } else {
-                                // Port is gone somehow
+                                true // Never had a successful transmission
+                            };
+
+                            if should_disconnect || status.consecutive_failures > 10 {
                                 status.connected = false;
-                                status.error_message = Some("Port handle lost".to_string());
+                                status.error_message =
+                                    Some("Connection health check failed".to_string());
+                                let mut conn = lora_connection.lock().unwrap();
+                                conn.port = None;
+                                println!("LoRa connection marked as unhealthy, will reconnect");
                             }
                         }
                     }
 
-                    // Check RFD connection
+                    // Check RFD connection health passively
                     if *rfd_enabled.lock().unwrap() {
-                        let mut rfd_conn = rfd_connection.lock().unwrap();
                         let mut status = rfd_status.lock().unwrap();
-
                         if status.connected {
-                            // Verify RFD connection is still active
-                            if let Some(port) = &mut rfd_conn.port {
-                                if let Err(e) = Self::verify_rfd_connection(port) {
-                                    // Connection failed
-                                    status.connected = false;
-                                    status.error_message = Some(format!("Connection lost: {}", e));
-                                    rfd_conn.port = None;
-                                    println!("RFD 900x2 connection lost: {}", e);
-                                } else {
-                                    status.last_success = Some(Instant::now());
-                                }
+                            let should_disconnect = if let Some(last_success) = status.last_success
+                            {
+                                now.duration_since(last_success).as_millis()
+                                    > CONNECTION_GRACE_PERIOD_MS as u128
                             } else {
-                                // Port is gone somehow
+                                true
+                            };
+
+                            if should_disconnect || status.consecutive_failures > 10 {
                                 status.connected = false;
-                                status.error_message = Some("Port handle lost".to_string());
+                                status.error_message =
+                                    Some("Connection health check failed".to_string());
+                                let mut conn = rfd_connection.lock().unwrap();
+                                conn.port = None;
+                                println!(
+                                    "RFD 900x2 connection marked as unhealthy, will reconnect"
+                                );
                             }
                         }
                     }
@@ -310,11 +318,13 @@ impl SerialManager {
 
                             conn.port = Some(port);
                             conn.modem_type = modem_type.clone();
+                            conn.last_health_check = Instant::now();
 
                             stat.connected = true;
                             stat.port_name = Some(port_name.clone());
                             stat.last_success = Some(Instant::now());
                             stat.error_message = None;
+                            stat.consecutive_failures = 0;
 
                             println!("{:?} modem connected on port {}", modem_type, port_name);
                             break;
@@ -347,7 +357,7 @@ impl SerialManager {
                 settings: true,
                 search: false,
                 gps: false,
-                state_change: 0, // Assuming 0 is a valid default
+                state_change: 0,
             }),
             settings: None,
             transmission: None,
@@ -396,108 +406,49 @@ impl SerialManager {
         }
     }
 
-    // Verify an RFD connection using AT commands - IMPROVED VERSION
+    // Simplified RFD verification - just check if we can open the port
     fn verify_rfd_connection(port: &mut Box<dyn SerialPort>) -> Result<(), String> {
-        // Set timeout for all operations
-        port.set_timeout(Duration::from_millis(1000))
+        // For RFD, we'll use a simpler verification method to avoid interfering with transmission
+        // Just try to set the timeout and flush - if this works, assume it's an RFD
+
+        // Set timeout
+        port.set_timeout(Duration::from_millis(100))
             .map_err(|e| format!("Failed to set timeout: {}", e))?;
 
-        // Clear any pending data and flush
-        let _ = port.flush();
+        // Try to flush - this is a simple operation that should work on any serial device
+        port.flush()
+            .map_err(|e| format!("Failed to flush port: {}", e))?;
 
-        // Clear input buffer
-        let mut clear_buf = [0u8; 256];
-        while port.read(&mut clear_buf).is_ok() {
-            // Keep reading until buffer is empty
-        }
-
-        // Wait a bit before sending +++
-        thread::sleep(Duration::from_millis(500));
-
-        // Send +++ to enter AT command mode (don't send \r\n after +++)
-        port.write_all(b"+++")
-            .map_err(|e| format!("Failed to send +++: {}", e))?;
-
-        // Wait for AT mode (RFD docs suggest 1 second)
-        thread::sleep(Duration::from_millis(1000));
-
-        // Try to read any response to +++
-        let mut response_buf = [0u8; 64];
-        match port.read(&mut response_buf) {
-            Ok(n) if n > 0 => {
-                let response = String::from_utf8_lossy(&response_buf[..n]);
-                println!("RFD response to +++: '{}'", response.trim());
-            }
-            _ => {
-                println!("No immediate response to +++, continuing...");
-            }
-        }
-
-        // Send AT command to check if we're in command mode
-        port.write_all(b"ATI\r\n")
-            .map_err(|e| format!("Failed to send ATI: {}", e))?;
-
-        // Wait for response
-        thread::sleep(Duration::from_millis(500));
-
-        // Read response
-        let mut response = vec![0u8; 256];
-        match port.read(&mut response) {
-            Ok(n) if n > 0 => {
-                let response_str = String::from_utf8_lossy(&response[..n]);
-                println!("RFD ATI response: '{}'", response_str.trim());
-
-                // Check if response contains typical RFD firmware info
-                if response_str.contains("RFD")
-                    || response_str.contains("SiK")
-                    || response_str.contains("OK")
-                {
-                    // Send ATO to exit AT mode and return to operational mode
-                    port.write_all(b"ATO\r\n")
-                        .map_err(|e| format!("Failed to send ATO: {}", e))?;
-                    thread::sleep(Duration::from_millis(100));
-
-                    println!("RFD 900x2 verification successful");
-                    Ok(())
-                } else {
-                    Err(format!("Invalid RFD response: {}", response_str.trim()))
-                }
-            }
-            Ok(_) => Err("No response to ATI command".to_string()),
-            Err(e) => Err(format!("Failed to read ATI response: {}", e)),
-        }
+        // If we get here, the port is working
+        println!("RFD 900x2 verification successful (simple check)");
+        Ok(())
     }
 
-    // Send CAN frame to all enabled and connected modems
+    // Send CAN frame to all enabled and connected modems - OPTIMIZED
     pub fn send_can_frame(&self, can_id: u32, data: &[u8]) -> Result<(), String> {
         let lora_connected = self.lora_status.lock().unwrap().connected;
         let rfd_connected = self.rfd_status.lock().unwrap().connected;
         let lora_enabled = self.is_lora_enabled();
         let rfd_enabled = self.is_rfd_enabled();
 
-        // Collect errors to return a combined result
         let mut errors = Vec::new();
         let mut success_count = 0;
 
         if lora_enabled && lora_connected {
-            match self.send_can_frame_lora(can_id, data) {
+            match self.send_can_frame_lora_fast(can_id, data) {
                 Ok(_) => success_count += 1,
                 Err(e) => errors.push(format!("LoRa error: {}", e)),
             }
         }
 
         if rfd_enabled && rfd_connected {
-            match self.send_can_frame_rfd(can_id, data) {
+            match self.send_can_frame_rfd_fast(can_id, data) {
                 Ok(_) => success_count += 1,
                 Err(e) => errors.push(format!("RFD error: {}", e)),
             }
         }
 
-        if success_count > 0 && errors.is_empty() {
-            Ok(())
-        } else if success_count > 0 {
-            // Some succeeded, some failed - log but don't fail completely
-            println!("Partial modem transmission failure: {}", errors.join("; "));
+        if success_count > 0 {
             Ok(())
         } else if !errors.is_empty() {
             Err(errors.join("; "))
@@ -506,21 +457,8 @@ impl SerialManager {
         }
     }
 
-    // Send CAN frame to LoRa modem
-    fn send_can_frame_lora(&self, can_id: u32, data: &[u8]) -> Result<(), String> {
-        // Quick check if port exists to fail fast
-        let port_exists = {
-            let guard = self
-                .lora_connection
-                .lock()
-                .map_err(|_| "Failed to lock port mutex".to_string())?;
-            guard.port.is_some()
-        };
-
-        if !port_exists {
-            return Err("LoRa port not open".to_string());
-        }
-
+    // Fast LoRa transmission with immediate timeout and status tracking
+    fn send_can_frame_lora_fast(&self, can_id: u32, data: &[u8]) -> Result<(), String> {
         // Create combined payload with ID (4 bytes) + data
         let mut payload = Vec::with_capacity(4 + data.len());
         payload.extend_from_slice(&can_id.to_be_bytes());
@@ -528,7 +466,6 @@ impl SerialManager {
 
         // Create proto message
         let transmission = Transmission { payload };
-
         let packet = Packet {
             r#type: PacketType::Transmission as i32,
             transmission: Some(transmission),
@@ -545,87 +482,93 @@ impl SerialManager {
             .encode(&mut encoded)
             .map_err(|e| format!("Error encoding packet: {}", e))?;
 
-        // Properly frame the message with start and end delimiters
+        // Frame the message
         let mut framed_data =
             Vec::with_capacity(START_DELIMITER.len() + encoded.len() + END_DELIMITER.len());
         framed_data.extend_from_slice(START_DELIMITER);
         framed_data.extend_from_slice(&encoded);
         framed_data.extend_from_slice(END_DELIMITER);
 
-        // Get a locked reference to the port
+        // Use try_lock to avoid blocking
         let mut lora_conn = match self.lora_connection.try_lock() {
             Ok(guard) => guard,
             Err(_) => {
-                // Port is busy - log but don't block
+                // Port is busy - update status but don't fail
+                self.update_transmission_status(&self.lora_status, false);
                 return Ok(()); // Return Ok to prevent error flooding
             }
         };
 
-        // Write to serial port with timeout handling
         if let Some(port) = lora_conn.port.as_mut() {
-            // Try to flush but don't fail if it doesn't work
-            let _ = port.flush();
+            // Set a very short timeout for transmission
+            let _ = port.set_timeout(Duration::from_millis(TRANSMISSION_TIMEOUT_MS));
 
-            // Write data with timeout protection
             match port.write_all(&framed_data) {
                 Ok(_) => {
-                    // Try to flush but don't fail if it doesn't work
-                    let _ = port.flush();
+                    let _ = port.flush(); // Try to flush but don't fail if it doesn't work
+                    self.update_transmission_status(&self.lora_status, true);
                     Ok(())
                 }
-                Err(e) => Err(format!("Failed to write to LoRa port: {}", e)),
+                Err(e) => {
+                    self.update_transmission_status(&self.lora_status, false);
+                    Err(format!("Failed to write to LoRa port: {}", e))
+                }
             }
         } else {
+            self.update_transmission_status(&self.lora_status, false);
             Err("LoRa port not open".to_string())
         }
     }
 
-    // Send CAN frame to RFD modem
-    fn send_can_frame_rfd(&self, can_id: u32, data: &[u8]) -> Result<(), String> {
-        // Quick check if port exists to fail fast
-        let port_exists = {
-            let guard = self
-                .rfd_connection
-                .lock()
-                .map_err(|_| "Failed to lock port mutex".to_string())?;
-            guard.port.is_some()
-        };
-
-        if !port_exists {
-            return Err("RFD port not open".to_string());
-        }
-
+    // Fast RFD transmission with immediate timeout and status tracking
+    fn send_can_frame_rfd_fast(&self, can_id: u32, data: &[u8]) -> Result<(), String> {
         // For RFD 900x2, we send the raw CAN ID followed by the data
-        // This will be transmitted as-is to the remote end
         let mut payload = Vec::with_capacity(4 + data.len());
         payload.extend_from_slice(&can_id.to_be_bytes());
         payload.extend_from_slice(data);
 
-        // Get a locked reference to the port
+        // Use try_lock to avoid blocking
         let mut rfd_conn = match self.rfd_connection.try_lock() {
             Ok(guard) => guard,
             Err(_) => {
-                // Port is busy - log but don't block
+                // Port is busy - update status but don't fail
+                self.update_transmission_status(&self.rfd_status, false);
                 return Ok(()); // Return Ok to prevent error flooding
             }
         };
 
-        // Write to serial port with timeout handling
         if let Some(port) = rfd_conn.port.as_mut() {
-            // Try to flush but don't fail if it doesn't work
-            let _ = port.flush();
+            // Set a very short timeout for transmission
+            let _ = port.set_timeout(Duration::from_millis(TRANSMISSION_TIMEOUT_MS));
 
-            // Write data with timeout protection
             match port.write_all(&payload) {
                 Ok(_) => {
-                    // Try to flush but don't fail if it doesn't work
-                    let _ = port.flush();
+                    let _ = port.flush(); // Try to flush but don't fail if it doesn't work
+                    self.update_transmission_status(&self.rfd_status, true);
                     Ok(())
                 }
-                Err(e) => Err(format!("Failed to write to RFD port: {}", e)),
+                Err(e) => {
+                    self.update_transmission_status(&self.rfd_status, false);
+                    Err(format!("Failed to write to RFD port: {}", e))
+                }
             }
         } else {
+            self.update_transmission_status(&self.rfd_status, false);
             Err("RFD port not open".to_string())
+        }
+    }
+
+    // Update transmission status for passive health monitoring
+    fn update_transmission_status(&self, status_arc: &Arc<Mutex<ModemStatus>>, success: bool) {
+        if let Ok(mut status) = status_arc.try_lock() {
+            status.last_transmission_attempt = Some(Instant::now());
+
+            if success {
+                status.last_success = Some(Instant::now());
+                status.consecutive_failures = 0;
+            } else {
+                status.consecutive_failures += 1;
+            }
         }
     }
 

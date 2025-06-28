@@ -15,9 +15,9 @@ fn main() -> iced::Result {
         .author("Your Name")
         .about("Telemetry application with CAN bus and radio support")
         .arg(
-            Arg::new("disable-lora")
-                .long("disable-lora")
-                .help("Disable LoRa modem")
+            Arg::new("enable-lora")
+                .long("enable-lora")
+                .help("Enable LoRa modem (disabled by default)")
                 .action(clap::ArgAction::SetTrue),
         )
         .arg(
@@ -40,7 +40,8 @@ fn main() -> iced::Result {
         )
         .get_matches();
 
-    let lora_enabled = false;
+    // LoRa is now disabled by default, only enabled with explicit flag or lora-only
+    let lora_enabled = matches.get_flag("enable-lora") || matches.get_flag("lora-only");
     let rfd_enabled = !matches.get_flag("disable-rfd") && !matches.get_flag("lora-only");
 
     println!("Starting Telemetry Application");
