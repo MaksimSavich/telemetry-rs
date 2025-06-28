@@ -9,6 +9,7 @@ use socketcan::{CanFrame, CanSocket, EmbeddedFrame, Socket, StandardId};
 use std::collections::HashMap;
 
 use crate::gui_modules::*;
+use rand;
 
 pub struct TelemetryGui {
     // CAN status
@@ -77,7 +78,7 @@ impl Application for TelemetryGui {
     fn new(flags: Self::Flags) -> (Self, Command<Message>) {
         let (lora_enabled, rfd_enabled) = flags;
 
-        let mut serial_manager = SerialManager::new();
+        let serial_manager = SerialManager::new();
 
         // Set enable/disable flags
         serial_manager.set_lora_enabled(lora_enabled);
