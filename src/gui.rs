@@ -410,7 +410,7 @@ impl TelemetryGui {
                 if let Ok(v) = value.parse::<f64>() {
                     // Convert RPM to MPH: RPM * wheel_circumference * 60 / 63360
                     // wheel_circumference = 23.5" * π
-                    self.speed_mph = (v * 23.5 * std::f64::consts::PI * 60.0) / 63360.0;
+                    self.speed_mph = 5;
                 }
             }
             GuiValueType::Direction => {
