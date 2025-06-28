@@ -1,4 +1,4 @@
-// Complete updated src/gui.rs file
+// Optimized src/gui.rs file
 
 use crate::can::CanDecoder;
 use crate::logger::CanLogger;
@@ -42,8 +42,8 @@ pub struct TelemetryGui {
 
     // Fault cycling state
     fault_page_index: usize,   // Current fault page (0-based)
-    fault_cycle_timer: u32,    // Timer for cycling (increments every 500ms)
-    fault_cycle_interval: u32, // Number of ticks between cycles (6 seconds = 12 ticks at 500ms)
+    fault_cycle_timer: u32,    // Timer for cycling (increments every update)
+    fault_cycle_interval: u32, // Number of ticks between cycles (3 seconds = 15 ticks at 200ms)
 
     // System components
     decoder: CanDecoder,
@@ -117,10 +117,10 @@ impl Application for TelemetryGui {
                 bps_state: "Standby".into(),
                 active_faults: HashMap::new(),
 
-                // Initialize fault cycling state
+                // Initialize fault cycling state - faster cycling
                 fault_page_index: 0,
                 fault_cycle_timer: 0,
-                fault_cycle_interval: 12, // 6 seconds at 500ms per tick
+                fault_cycle_interval: 15, // 3 seconds at 200ms per tick
 
                 theme: iced::Theme::Dark,
                 decoder: CanDecoder::new("telemetry.dbc"),
@@ -155,10 +155,14 @@ impl Application for TelemetryGui {
                 // Mark CAN as connected
                 self.can_connected = true;
 
-                // Log the frame
+                // Log the frame (non-blocking)
                 if let Some(logger) = &mut self.logger {
                     if let Err(e) = logger.log_frame(&frame) {
-                        eprintln!("Failed to log CAN frame: {}", e);
+                        // Don't print every logging error to avoid console spam
+                        if rand::random::<u8>() < 10 {
+                            // Print ~4% of errors
+                            eprintln!("Failed to log CAN frame: {}", e);
+                        }
                     }
                 }
 
@@ -197,14 +201,13 @@ impl Application for TelemetryGui {
                     _ => "Unknown",
                 };
 
-                // Process telemetry data using new mapping system
+                // Process telemetry data using mapping system
                 for line in decoded_str.lines() {
                     if let Some((signal, val)) = line.split_once(": ") {
                         // Check if this signal updates a GUI value
                         if let Some(gui_value_types) =
                             self.gui_value_mappings.get(&(message_name, signal))
                         {
-                            // Clone the gui_value_types to avoid borrowing self
                             let gui_value_types_cloned = gui_value_types.clone();
                             for gui_value_type in gui_value_types_cloned {
                                 self.update_gui_value(&gui_value_type, val);
@@ -218,10 +221,8 @@ impl Application for TelemetryGui {
                             }
                         }
 
-                        // Handle special DTC fault processing (existing logic)
+                        // Handle special DTC fault processing
                         if message_name == "BMS_DTC" {
-                            // DTC faults are already handled in the CAN decoder
-                            // The decoded_str will contain the fault descriptions
                             if signal.starts_with("Fault_DTC") {
                                 let fault_name = signal.to_string();
                                 if !val.trim().is_empty()
@@ -246,8 +247,8 @@ impl Application for TelemetryGui {
                     }
                 }
 
-                // Send the CAN frame to all enabled modems
-                self.send_can_frame_to_modems(raw_id, frame.data());
+                // Send the CAN frame to all enabled modems (async, non-blocking)
+                self.send_can_frame_to_modems_async(raw_id, frame.data());
             }
 
             Message::ToggleFullscreen => {
@@ -266,10 +267,10 @@ impl Application for TelemetryGui {
                 // Update current time
                 self.current_time = Local::now().format("%H:%M:%S").to_string();
 
-                // Update modem connection status
+                // Update modem connection status (non-blocking)
                 self.update_modem_status();
 
-                // Handle fault cycling
+                // Handle fault cycling (faster)
                 let fault_count = self.active_faults.len();
                 if fault_count > 5 {
                     // Increment the fault cycle timer
@@ -340,9 +341,9 @@ impl Application for TelemetryGui {
     }
 
     fn subscription(&self) -> Subscription<Message> {
-        // Combine subscriptions
+        // Combine subscriptions with optimized intervals
         Subscription::batch(vec![
-            // CAN subscription
+            // CAN subscription - optimized for minimal latency
             {
                 let decoder = self.decoder.clone();
                 subscription::unfold("can_subscription", decoder, |decoder| async {
@@ -351,7 +352,7 @@ impl Application for TelemetryGui {
                         Err(e) => {
                             eprintln!("Failed to open CAN socket: {}", e);
                             // Sleep and try again
-                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                            tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
                             // Create a dummy frame for the error case
                             let dummy_frame = match CanFrame::new(
                                 socketcan::Id::Standard(StandardId::new(0).unwrap()),
@@ -369,7 +370,7 @@ impl Application for TelemetryGui {
                         }
                     };
 
-                    // Set non-blocking mode
+                    // Set non-blocking mode with minimal timeout
                     if let Err(e) = socket.set_nonblocking(true) {
                         eprintln!("Failed to set non-blocking mode: {}", e);
                     }
@@ -385,19 +386,19 @@ impl Application for TelemetryGui {
                             }
                             Err(e) => {
                                 if e.kind() == std::io::ErrorKind::WouldBlock {
-                                    // No data available, just sleep briefly
-                                    tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+                                    // No data available, sleep very briefly for responsiveness
+                                    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
                                 } else {
                                     eprintln!("CAN read error: {}", e);
-                                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                                 }
                             }
                         }
                     }
                 })
             },
-            // Timer for updating time and checking connections
-            time::every(std::time::Duration::from_millis(500)).map(|_| Message::Tick),
+            // Timer for updating time and checking connections - faster refresh
+            time::every(std::time::Duration::from_millis(200)).map(|_| Message::Tick),
         ])
     }
 }
@@ -527,11 +528,11 @@ impl TelemetryGui {
         }
     }
 
-    // Helper method to update modem status from the SerialManager
+    // Helper method to update modem status from the SerialManager (non-blocking)
     fn update_modem_status(&mut self) {
-        // Only check status for enabled modems
+        // Only check status for enabled modems using try_lock to avoid blocking
         if self.lora_enabled {
-            if let Ok(lora_status) = self.serial_manager.lora_status.lock() {
+            if let Ok(lora_status) = self.serial_manager.lora_status.try_lock() {
                 self.lora_connected = lora_status.connected;
             }
         } else {
@@ -539,7 +540,7 @@ impl TelemetryGui {
         }
 
         if self.rfd_enabled {
-            if let Ok(rfd_status) = self.serial_manager.rfd_status.lock() {
+            if let Ok(rfd_status) = self.serial_manager.rfd_status.try_lock() {
                 self.rfd_connected = rfd_status.connected;
             }
         } else {
@@ -547,15 +548,21 @@ impl TelemetryGui {
         }
     }
 
-    // Helper method to send CAN frame to enabled modems
-    fn send_can_frame_to_modems(&self, can_id: u32, data: &[u8]) {
+    // Async helper method to send CAN frame to enabled modems without blocking GUI
+    fn send_can_frame_to_modems_async(&self, can_id: u32, data: &[u8]) {
         // Only send to enabled modems
         if (self.lora_enabled && self.lora_connected) || (self.rfd_enabled && self.rfd_connected) {
-            if let Err(e) = self.serial_manager.send_can_frame(can_id, data) {
-                // Don't print errors for every frame to avoid flooding console
-                // The SerialManager already handles retries and connection status
-                eprintln!("Failed to send CAN frame to modems: {}", e);
-            }
+            // Clone data for async operation to avoid lifetime issues
+            let data_vec = data.to_vec();
+            let serial_manager = self.serial_manager.clone();
+
+            // Use tokio to spawn a non-blocking task for transmission
+            tokio::spawn(async move {
+                if let Err(_) = serial_manager.send_can_frame(can_id, &data_vec) {
+                    // Silently handle errors to avoid console spam
+                    // The SerialManager tracks failures internally for health monitoring
+                }
+            });
         }
     }
 }
