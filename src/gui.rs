@@ -1,63 +1,109 @@
+// Complete updated src/gui.rs file
+
 use crate::can::CanDecoder;
+use crate::logger::CanLogger;
 use crate::serial::SerialManager;
+use chrono::Local;
 use iced::{subscription, time, Application, Command, Element, Subscription, Theme};
 use socketcan::{CanFrame, CanSocket, EmbeddedFrame, Socket, StandardId};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use std::thread;
 
 use crate::gui_modules::*;
 
 pub struct TelemetryGui {
+    // CAN status
+    can_connected: bool,
+
+    // Motor data
     speed_mph: f64,
     direction: String,
-    bps_state: String,
+
+    // BMS data
+    bms_data: BmsData,
+
+    // Battery data
     battery_voltage: f64,
     battery_current: f64,
     battery_charge: f64,
     battery_temp: f64,
+    battery_temp_lo: f64,
+    battery_temp_hi: f64,
+
+    // BPS data
+    bps_state: String,
     bps_ontime: u64,
-    latest_fault: Option<String>,
+
+    // UI state
     fullscreen: bool,
+    current_time: String,
+
+    // Fault tracking
     active_faults: HashMap<String, Fault>,
-    fault_history: Vec<Fault>,
+
+    // Fault cycling state
+    fault_page_index: usize,   // Current fault page (0-based)
+    fault_cycle_timer: u32,    // Timer for cycling (increments every 500ms)
+    fault_cycle_interval: u32, // Number of ticks between cycles (6 seconds = 12 ticks at 500ms)
+
+    // System components
     decoder: CanDecoder,
+    logger: Option<CanLogger>,
     theme: Theme,
-
-    // Serial communication
     serial_manager: SerialManager,
-    available_ports: Vec<String>,
-    selected_port: Option<String>,
-    serial_status: String,
 
-    // LoRa enabled flag
+    // Radio status
+    lora_connected: bool,
+    rfd_connected: bool,
+
+    // Enable/disable flags
     lora_enabled: bool,
+    rfd_enabled: bool,
 
-    // Fault panel state
-    fault_panel_expanded: bool,
-    current_fault_index: usize,
-
-    // Serial status for thread communication
-    serial_status_shared: Arc<Mutex<String>>,
+    // Configuration mappings
+    gui_value_mappings: HashMap<(&'static str, &'static str), Vec<GuiValueType>>,
+    fault_signal_config: HashMap<&'static str, Vec<&'static str>>,
 }
 
 impl Application for TelemetryGui {
     type Executor = iced::executor::Default;
     type Message = Message;
     type Theme = iced::Theme;
-    type Flags = ();
+    type Flags = (bool, bool); // (lora_enabled, rfd_enabled)
 
     fn theme(&self) -> Self::Theme {
         iced::Theme::Dark
     }
 
-    fn new(_flags: ()) -> (Self, Command<Message>) {
-        let serial_manager = SerialManager::new();
-        let available_ports = SerialManager::list_available_ports();
+    fn new(flags: Self::Flags) -> (Self, Command<Message>) {
+        let (lora_enabled, rfd_enabled) = flags;
+
+        let mut serial_manager = SerialManager::new();
+
+        // Set enable/disable flags
+        serial_manager.set_lora_enabled(lora_enabled);
+        serial_manager.set_rfd_enabled(rfd_enabled);
+
+        // Start the background scanning for modems
+        let mut sm = serial_manager.clone();
+        if let Err(e) = sm.start_background_scanning() {
+            println!("Failed to start background scanning: {}", e);
+        }
+
+        // Initialize logger
+        let logger = match CanLogger::new() {
+            Ok(logger) => {
+                println!("CAN logging started: {:?}", logger.get_log_path());
+                Some(logger)
+            }
+            Err(e) => {
+                eprintln!("Failed to initialize CAN logger: {}", e);
+                None
+            }
+        };
 
         (
             Self {
-                latest_fault: None,
+                can_connected: false,
                 direction: "Neutral".into(),
                 fullscreen: true,
                 speed_mph: 0.0,
@@ -65,150 +111,143 @@ impl Application for TelemetryGui {
                 battery_current: 0.0,
                 battery_charge: 0.0,
                 battery_temp: 0.0,
+                battery_temp_hi: 0.0,
+                battery_temp_lo: 0.0,
                 bps_ontime: 0,
                 bps_state: "Standby".into(),
                 active_faults: HashMap::new(),
-                fault_history: Vec::new(),
+
+                // Initialize fault cycling state
+                fault_page_index: 0,
+                fault_cycle_timer: 0,
+                fault_cycle_interval: 12, // 6 seconds at 500ms per tick
+
                 theme: iced::Theme::Dark,
                 decoder: CanDecoder::new("telemetry.dbc"),
-
-                // Serial management
+                logger,
                 serial_manager,
-                available_ports,
-                selected_port: None,
-                serial_status: "Disconnected".into(),
-                lora_enabled: false,
+                lora_connected: false,
+                rfd_connected: false,
+                lora_enabled,
+                rfd_enabled,
+                current_time: Local::now().format("%H:%M:%S").to_string(),
+                bms_data: BmsData::default(),
 
-                // Fault panel state
-                fault_panel_expanded: false,
-                current_fault_index: 0,
-
-                // Thread communication
-                serial_status_shared: Arc::new(Mutex::new("Disconnected".into())),
+                // Initialize configuration mappings
+                gui_value_mappings: get_gui_value_mappings(),
+                fault_signal_config: get_fault_signal_config(),
             },
             iced::window::change_mode(iced::window::Id::MAIN, iced::window::Mode::Fullscreen),
         )
     }
 
     fn title(&self) -> String {
-        "Telemetry RS - Responsive GUI".into()
+        format!(
+            "Telemetry RS - LoRa: {} | RFD: {}",
+            if self.lora_enabled { "ON" } else { "OFF" },
+            if self.rfd_enabled { "ON" } else { "OFF" }
+        )
     }
 
     fn update(&mut self, message: Message) -> Command<Message> {
         match message {
             Message::CanFrameReceived(decoded_str, frame) => {
-                // Print frame for debugging
+                // Mark CAN as connected
+                self.can_connected = true;
+
+                // Log the frame
+                if let Some(logger) = &mut self.logger {
+                    if let Err(e) = logger.log_frame(&frame) {
+                        eprintln!("Failed to log CAN frame: {}", e);
+                    }
+                }
+
+                // Get frame ID for fault tracking
                 let raw_id = match frame.id() {
                     socketcan::Id::Standard(std_id) => std_id.as_raw() as u32,
                     socketcan::Id::Extended(ext_id) => ext_id.as_raw(),
                 };
 
-                println!(
-                    "Processing frame: ID=0x{:X}, Data={:?}",
-                    raw_id,
-                    frame.data()
-                );
+                // Determine message name from ID
+                let message_name = match raw_id {
+                    0x300 => "BMS_DTC",
+                    0x310 => "BMS_Limits",
+                    0x320 => "BMS_Power",
+                    0x330 => "BMS_State",
+                    0x340 => "BMS_Capacity",
+                    0x360 => "BMS_Temperature",
+                    0x776 | 0x777 => "BPS_System",
+                    0x0 | 0x1 => "MPPT",
+                    // Motor Controller 1 (ID ending in 05)
+                    id if id == 0x8CF11E05
+                        || id == 0x8CF11F05
+                        || (id & 0xFFFFFF0F) == 0x8CF11E05
+                        || (id & 0xFFFFFF0F) == 0x8CF11F05 =>
+                    {
+                        "MotorController_1"
+                    }
+                    // Motor Controller 2 (ID ending in 06)
+                    id if id == 0x8CF11E06
+                        || id == 0x8CF11F06
+                        || (id & 0xFFFFFF0F) == 0x8CF11E06
+                        || (id & 0xFFFFFF0F) == 0x8CF11F06 =>
+                    {
+                        "MotorController_2"
+                    }
+                    _ => "Unknown",
+                };
 
-                // Process telemetry data
+                // Process telemetry data using new mapping system
                 for line in decoded_str.lines() {
                     if let Some((signal, val)) = line.split_once(": ") {
-                        println!("  Signal: {}, Value: {}", signal, val);
-                        match signal {
-                            "Actual_Speed_RPM" => match val.parse::<f64>() {
-                                Ok(v) => {
-                                    self.speed_mph =
-                                        (v * 21.25 * std::f64::consts::PI * 60.0) / 63360.0
-                                }
-                                Err(e) => println!("Failed to parse speed: {}", e),
-                            },
-                            "Direction" => self.direction = val.to_string(),
-                            "BPS_Voltage_V" => match val.parse::<f64>() {
-                                Ok(v) => self.battery_voltage = v,
-                                Err(e) => println!("Failed to parse voltage: {}", e),
-                            },
-                            "BPS_Current_A" => match val.parse::<f64>() {
-                                Ok(v) => self.battery_current = v,
-                                Err(e) => println!("Failed to parse current: {}", e),
-                            },
-                            "Charge_Level" => match val.parse::<f64>() {
-                                Ok(v) => self.battery_charge = v,
-                                Err(e) => println!("Failed to parse charge: {}", e),
-                            },
-                            "Supp_Temperature_C" => match val.parse::<f64>() {
-                                Ok(v) => self.battery_temp = v,
-                                Err(e) => println!("Failed to parse temperature: {}", e),
-                            },
-                            "BPS_ON_Time" => match val.parse::<u64>() {
-                                Ok(v) => self.bps_ontime = v,
-                                Err(e) => println!("Failed to parse BPS on time: {}", e),
-                            },
-                            "BPS_State" => self.bps_state = val.to_string(),
-                            _ => {
-                                // Check for fault signals
-                                if signal.starts_with("Fault_") {
-                                    let fault_name = signal.to_string();
-                                    if !val.trim().is_empty()
-                                        && val.trim() != "0"
-                                        && val.trim() != "0.0"
-                                    {
-                                        // If fault is newly active
-                                        println!("Fault detected: {} = {}", fault_name, val);
-                                        if !self.active_faults.contains_key(&fault_name) {
-                                            let new_fault = Fault {
-                                                name: fault_name.clone(),
-                                                timestamp: chrono::Utc::now(),
-                                                is_active: true,
-                                                value: val.to_owned(),
-                                            };
-                                            println!("Creating new fault entry");
-                                            self.active_faults
-                                                .insert(fault_name.clone(), new_fault.clone());
-                                            self.fault_history.push(new_fault);
-                                            println!("Active faults: {}", self.active_faults.len());
-                                        }
-                                    } else {
-                                        // If fault is cleared
-                                        if let Some(fault) = self.active_faults.get_mut(&fault_name)
-                                        {
-                                            fault.is_active = false;
-                                        }
-                                    }
+                        // Check if this signal updates a GUI value
+                        if let Some(gui_value_types) =
+                            self.gui_value_mappings.get(&(message_name, signal))
+                        {
+                            // Clone the gui_value_types to avoid borrowing self
+                            let gui_value_types_cloned = gui_value_types.clone();
+                            for gui_value_type in gui_value_types_cloned {
+                                self.update_gui_value(&gui_value_type, val);
+                            }
+                        }
+
+                        // Check if this signal is configured as a fault signal
+                        if let Some(fault_signals) = self.fault_signal_config.get(message_name) {
+                            if fault_signals.contains(&signal) {
+                                self.process_regular_fault(message_name, signal, val);
+                            }
+                        }
+
+                        // Handle special DTC fault processing (existing logic)
+                        if message_name == "BMS_DTC" {
+                            // DTC faults are already handled in the CAN decoder
+                            // The decoded_str will contain the fault descriptions
+                            if signal.starts_with("Fault_DTC") {
+                                let fault_name = signal.to_string();
+                                if !val.trim().is_empty()
+                                    && val.trim() != "0"
+                                    && val.trim() != "0.0"
+                                {
+                                    // DTC fault is active
+                                    let new_fault = Fault {
+                                        name: fault_name.clone(),
+                                        timestamp: chrono::Utc::now(),
+                                        is_active: true,
+                                        value: val.to_owned(),
+                                        message_name: message_name.to_string(),
+                                    };
+                                    self.active_faults.insert(fault_name.clone(), new_fault);
+                                } else {
+                                    // DTC fault is cleared
+                                    self.active_faults.remove(&fault_name);
                                 }
                             }
                         }
                     }
                 }
 
-                // If LoRa transmission is enabled, send the CAN frame in a non-blocking way
-                if self.lora_enabled {
-                    // Clone what we need for the thread
-                    let serial_manager = self.serial_manager.clone();
-                    let frame_data = frame.data().to_vec();
-                    let frame_id = raw_id;
-                    let status_shared = Arc::clone(&self.serial_status_shared);
-
-                    // Spawn a thread to handle serial sending
-                    thread::spawn(move || {
-                        if let Err(e) = serial_manager.send_can_frame(frame_id, &frame_data) {
-                            println!("Failed to send CAN frame over serial: {}", e);
-
-                            // Update status
-                            if let Ok(mut status) = status_shared.lock() {
-                                *status = format!("Error: {}", e);
-                            }
-                        } else {
-                            // Successfully sent
-                            if let Ok(mut status) = status_shared.lock() {
-                                *status = format!("Sent: ID 0x{:X}", frame_id);
-                            }
-                        }
-                    });
-
-                    // Update our status from the shared status
-                    if let Ok(status) = self.serial_status_shared.lock() {
-                        self.serial_status = status.clone();
-                    }
-                }
+                // Send the CAN frame to all enabled modems
+                self.send_can_frame_to_modems(raw_id, frame.data());
             }
 
             Message::ToggleFullscreen => {
@@ -223,65 +262,37 @@ impl Application for TelemetryGui {
                 );
             }
 
-            Message::ClearFaults => {
-                // Mark all active faults as inactive
-                for fault in self.active_faults.values_mut() {
-                    fault.is_active = false;
-                }
-                self.active_faults.clear();
-                self.current_fault_index = 0;
-            }
+            Message::Tick => {
+                // Update current time
+                self.current_time = Local::now().format("%H:%M:%S").to_string();
 
-            Message::ToggleFaultPanelExpanded => {
-                self.fault_panel_expanded = !self.fault_panel_expanded;
-            }
+                // Update modem connection status
+                self.update_modem_status();
 
-            Message::CycleFault => {
-                // Only cycle if we have active faults
-                if !self.active_faults.is_empty() {
-                    self.current_fault_index =
-                        (self.current_fault_index + 1) % self.active_faults.len();
-                }
-            }
+                // Handle fault cycling
+                let fault_count = self.active_faults.len();
+                if fault_count > 5 {
+                    // Increment the fault cycle timer
+                    self.fault_cycle_timer += 1;
 
-            Message::PortSelected(port) => {
-                self.selected_port = Some(port);
-            }
+                    // Check if it's time to cycle to the next page
+                    if self.fault_cycle_timer >= self.fault_cycle_interval {
+                        self.fault_cycle_timer = 0; // Reset timer
 
-            Message::ConnectSerialPort => {
-                if let Some(port) = &self.selected_port {
-                    match self.serial_manager.connect(port, 115200) {
-                        Ok(_) => {
-                            let status = format!("Connected to {}", port);
-                            self.serial_status = status.clone();
-                            if let Ok(mut shared) = self.serial_status_shared.lock() {
-                                *shared = status;
-                            }
-                        }
-                        Err(e) => {
-                            let status = format!("Error: {}", e);
-                            self.serial_status = status.clone();
-                            if let Ok(mut shared) = self.serial_status_shared.lock() {
-                                *shared = status;
-                            }
-                        }
+                        // Calculate total pages
+                        let total_pages = (fault_count + 4) / 5; // Ceiling division for 5 faults per page
+
+                        // Move to next page, wrapping around if necessary
+                        self.fault_page_index = (self.fault_page_index + 1) % total_pages;
                     }
-                }
-            }
-
-            Message::ToggleLoRa => {
-                self.lora_enabled = !self.lora_enabled;
-                let status = if self.lora_enabled {
-                    "LoRa transmission enabled".to_string()
                 } else {
-                    "LoRa transmission disabled".to_string()
-                };
-                self.serial_status = status.clone();
-                if let Ok(mut shared) = self.serial_status_shared.lock() {
-                    *shared = status;
+                    // Reset cycling state when we have 5 or fewer faults
+                    self.fault_page_index = 0;
+                    self.fault_cycle_timer = 0;
                 }
             }
         }
+
         Command::none()
     }
 
@@ -292,6 +303,8 @@ impl Application for TelemetryGui {
             current: self.battery_current,
             charge: self.battery_charge,
             temp: self.battery_temp,
+            temp_lo: self.battery_temp_lo,
+            temp_hi: self.battery_temp_hi,
         };
 
         let bps_data = BpsData {
@@ -299,54 +312,41 @@ impl Application for TelemetryGui {
             state: self.bps_state.clone(),
         };
 
-        let status_data = StatusData {
-            direction: self.direction.clone(),
-            latest_fault: self.latest_fault.clone(),
-        };
-
-        let serial_config = SerialConfig {
-            available_ports: self.available_ports.clone(),
-            selected_port: self.selected_port.clone(),
-            serial_status: self.serial_status.clone(),
-            lora_enabled: self.lora_enabled,
-        };
-
-        // Use our components
-        let direction_element = direction_text(&self.direction);
-        let speed_element = speed_text(self.speed_mph);
-        let status_element = status_box(&status_data);
-        let battery_element = battery_box(&battery_data);
-        let bps_element = bps_box(&bps_data);
-        let serial_element = serial_panel(&serial_config);
-
-        // Create fault panel with expanded state and current index
-        let fault_element = fault_section(
-            &self.active_faults,
-            self.fault_panel_expanded,
-            self.current_fault_index,
+        // Create UI elements
+        let can_status = can_status_indicator(self.can_connected);
+        let radio_status = radio_status_indicators(
+            self.lora_connected && self.lora_enabled,
+            self.rfd_connected && self.rfd_enabled,
         );
+        let bms_info = bms_info_box(&self.bms_data);
+        let speed_direction = direction_speed_display(&self.direction, self.speed_mph);
+        let battery_info = battery_box(&battery_data);
+        let bps_info = bps_box(&bps_data);
+        let fault_display = fault_display(&self.active_faults, self.fault_page_index);
+        let time_display = time_display(&self.current_time);
 
         // Use the layout utility to organize everything
         main_layout(
             self.fullscreen,
-            direction_element,
-            speed_element,
-            status_element,
-            battery_element,
-            bps_element,
-            serial_element,
-            fault_element,
+            can_status,
+            radio_status,
+            bms_info,
+            speed_direction,
+            battery_info,
+            bps_info,
+            fault_display,
+            time_display,
         )
     }
 
     fn subscription(&self) -> Subscription<Message> {
         // Combine subscriptions
         Subscription::batch(vec![
-            // Improved CAN subscription
+            // CAN subscription
             {
                 let decoder = self.decoder.clone();
                 subscription::unfold("can_subscription", decoder, |decoder| async {
-                    let socket = match CanSocket::open("can0") {
+                    let socket = match CanSocket::open("vcan0") {
                         Ok(s) => s,
                         Err(e) => {
                             eprintln!("Failed to open CAN socket: {}", e);
@@ -359,7 +359,6 @@ impl Application for TelemetryGui {
                             ) {
                                 Some(frame) => frame,
                                 None => {
-                                    // If we can't even create a dummy frame, something is very wrong
                                     panic!("Failed to create dummy CAN frame");
                                 }
                             };
@@ -378,11 +377,10 @@ impl Application for TelemetryGui {
                     loop {
                         match socket.read_frame() {
                             Ok(frame) => {
-                                println!("Received CAN frame: {:?}", frame);
                                 // Always pass the frame along, even if decoding fails
                                 let decoded = decoder
                                     .decode(frame.clone())
-                                    .unwrap_or_else(|| format!("Failed to decode: {:?}", frame));
+                                    .unwrap_or_else(|| format!("Unknown frame: {:?}", frame));
                                 return (Message::CanFrameReceived(decoded, frame), decoder);
                             }
                             Err(e) => {
@@ -398,13 +396,166 @@ impl Application for TelemetryGui {
                     }
                 })
             },
-            // Add a timer for cycling through faults when not expanded
-            // Only subscribe if there are active faults and panel is not expanded
-            if !self.active_faults.is_empty() && !self.fault_panel_expanded {
-                time::every(std::time::Duration::from_secs(2)).map(|_| Message::CycleFault)
-            } else {
-                Subscription::none()
-            },
+            // Timer for updating time and checking connections
+            time::every(std::time::Duration::from_millis(500)).map(|_| Message::Tick),
         ])
+    }
+}
+
+impl TelemetryGui {
+    // Helper method to update GUI values based on the configuration
+    fn update_gui_value(&mut self, gui_value_type: &GuiValueType, value: &str) {
+        match gui_value_type {
+            GuiValueType::Speed => {
+                if let Ok(v) = value.parse::<f64>() {
+                    // Convert RPM to MPH: RPM * wheel_circumference * 60 / 63360
+                    // wheel_circumference = 23.5" * π
+                    self.speed_mph = (v * 23.5 * std::f64::consts::PI * 60.0) / 63360.0;
+                }
+            }
+            GuiValueType::Direction => {
+                self.direction = value.to_string();
+            }
+            GuiValueType::BmsPackDcl => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.pack_dcl = v;
+                }
+            }
+            GuiValueType::BmsPackDclKw => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.pack_dcl_kw = v;
+                }
+            }
+            GuiValueType::BmsPackCcl => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.pack_ccl = v;
+                }
+            }
+            GuiValueType::BmsPackCclKw => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.pack_ccl_kw = v;
+                }
+            }
+            GuiValueType::BmsPackDod => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.pack_dod = v;
+                }
+            }
+            GuiValueType::BmsPackHealth => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.pack_health = v;
+                }
+            }
+            GuiValueType::BmsAdaptiveSoc => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.adaptive_soc = v;
+                }
+            }
+            GuiValueType::BmsPackSoc => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.pack_soc = v;
+                }
+            }
+            GuiValueType::BmsAdaptiveAmphours => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.adaptive_amphours = v;
+                }
+            }
+            GuiValueType::BmsPackAmphours => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.bms_data.pack_amphours = v;
+                }
+            }
+            GuiValueType::BatteryVoltage => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.battery_voltage = v;
+                }
+            }
+            GuiValueType::BatteryCurrent => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.battery_current = v;
+                }
+            }
+            GuiValueType::BatteryCharge => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.battery_charge = v;
+                }
+            }
+            GuiValueType::BatteryTemp => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.battery_temp = v;
+                }
+            }
+            GuiValueType::BatteryTempLo => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.battery_temp_lo = v;
+                }
+            }
+            GuiValueType::BatteryTempHi => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.battery_temp_hi = v;
+                }
+            }
+            GuiValueType::BpsOnTime => {
+                if let Ok(v) = value.parse::<u64>() {
+                    self.bps_ontime = v;
+                }
+            }
+            GuiValueType::BpsState => {
+                self.bps_state = value.to_string();
+            }
+        }
+    }
+
+    // Helper method to process regular faults (non-DTC)
+    fn process_regular_fault(&mut self, message_name: &str, signal_name: &str, value: &str) {
+        let fault_key = format!("{}_{}", message_name, signal_name);
+
+        if is_fault_value(value) {
+            // Fault is active
+            let new_fault = Fault {
+                name: signal_name.to_string(),
+                timestamp: chrono::Utc::now(),
+                is_active: true,
+                value: value.to_owned(),
+                message_name: message_name.to_string(),
+            };
+            self.active_faults.insert(fault_key, new_fault);
+        } else {
+            // Fault is cleared
+            self.active_faults.remove(&fault_key);
+        }
+    }
+
+    // Helper method to update modem status from the SerialManager
+    fn update_modem_status(&mut self) {
+        // Only check status for enabled modems
+        if self.lora_enabled {
+            if let Ok(lora_status) = self.serial_manager.lora_status.lock() {
+                self.lora_connected = lora_status.connected;
+            }
+        } else {
+            self.lora_connected = false;
+        }
+
+        if self.rfd_enabled {
+            if let Ok(rfd_status) = self.serial_manager.rfd_status.lock() {
+                self.rfd_connected = rfd_status.connected;
+            }
+        } else {
+            self.rfd_connected = false;
+        }
+    }
+
+    // Helper method to send CAN frame to enabled modems
+    fn send_can_frame_to_modems(&self, can_id: u32, data: &[u8]) {
+        // Only send to enabled modems
+        if (self.lora_enabled && self.lora_connected) || (self.rfd_enabled && self.rfd_connected) {
+            if let Err(e) = self.serial_manager.send_can_frame(can_id, data) {
+                // Don't print errors for every frame to avoid flooding console
+                // The SerialManager already handles retries and connection status
+                eprintln!("Failed to send CAN frame to modems: {}", e);
+            }
+        }
     }
 }

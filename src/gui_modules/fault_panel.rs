@@ -1,148 +1,168 @@
 use crate::gui_modules::{create_error_container_style, Fault, Message};
-use iced::widget::{button, column, container, row, scrollable, text};
-use iced::{Alignment, Element, Length};
+use iced::widget::container::{Appearance, StyleSheet};
+use iced::widget::{column, container, row, text, Space};
+use iced::{Alignment, Color, Element, Length};
 use std::collections::HashMap;
 
-pub fn fault_section(
+const FAULTS_PER_PAGE: usize = 5;
+
+pub fn fault_display(
     active_faults: &HashMap<String, Fault>,
-    expanded: bool,
-    current_fault_index: usize,
+    current_page: usize,
 ) -> Element<'static, Message> {
     let fault_count = active_faults.len();
-    let has_faults = fault_count > 0;
 
-    // Create the header section with fault count and expand/collapse button
-    let header = {
-        let fault_indicator = container(text(format!("Faults: {}", fault_count)).size(16))
-            .style(if has_faults {
-                create_error_container_style()
-            } else {
-                iced::theme::Container::Box
-            })
-            .padding(10)
-            .width(Length::FillPortion(1));
-
-        let expand_button = button(text(if expanded { "Collapse" } else { "Expand" }).size(14))
-            .on_press(Message::ToggleFaultPanelExpanded)
-            .width(Length::Shrink);
-
-        row![fault_indicator, expand_button]
-            .spacing(10)
-            .align_items(Alignment::Center)
+    // Create pagination info
+    let total_pages = if fault_count == 0 {
+        0
+    } else {
+        (fault_count + FAULTS_PER_PAGE - 1) / FAULTS_PER_PAGE // Ceiling division
     };
 
-    // The main content depends on expanded state
-    let content = if !has_faults {
-        // No faults to display
-        Element::from(
-            container(text("No active faults").size(14))
-                .width(Length::Fill)
-                .center_x()
-                .padding(10),
+    let page_info = if total_pages > 1 {
+        format!(
+            "ACTIVE FAULTS: {} (Page {}/{})",
+            fault_count,
+            current_page + 1,
+            total_pages
         )
-    } else if expanded {
-        // Expanded view - show all faults in a scrollable list
-        let faults_list = active_faults
-            .values()
-            .map(|fault| {
-                row![
-                    text(&fault.name).width(Length::FillPortion(3)),
-                    text(&fault.value).width(Length::FillPortion(1)),
-                    text(format!("{}", fault.timestamp.format("%H:%M:%S")))
-                        .width(Length::FillPortion(1))
-                ]
-                .spacing(10)
-                .padding(5)
-                .width(Length::Fill)
-                .into()
-            })
-            .collect::<Vec<_>>();
+    } else {
+        format!("ACTIVE FAULTS: {}", fault_count)
+    };
 
-        // Add header row for the fault list
-        let header_row = row![
-            text("Fault Name").width(Length::FillPortion(3)).size(14),
-            text("Value").width(Length::FillPortion(1)).size(14),
-            text("Time").width(Length::FillPortion(1)).size(14)
-        ]
-        .spacing(10)
-        .padding(5);
+    // Header showing fault count and page info
+    let header = container(
+        text(page_info)
+            .size(16)
+            .horizontal_alignment(iced::alignment::Horizontal::Center),
+    )
+    .width(Length::Fill)
+    .padding(5)
+    .style(if fault_count > 0 {
+        create_error_container_style()
+    } else {
+        iced::theme::Container::Box
+    });
 
-        // Combine header and scrollable content
-        let scroll_content = column![header_row]
-            .push(
-                scrollable(column(faults_list).spacing(2).width(Length::Fill))
-                    .height(Length::Fixed(150.0)),
+    if fault_count == 0 {
+        // No faults - show simple message
+        return column![
+            header,
+            container(
+                text("System OK - No Active Faults")
+                    .size(14)
+                    .horizontal_alignment(iced::alignment::Horizontal::Center)
             )
-            .spacing(5)
-            .width(Length::Fill);
-
-        container(scroll_content)
             .width(Length::Fill)
             .padding(10)
-            .style(iced::theme::Container::Box)
-            .into()
-    } else {
-        // Collapsed view - show cycling fault at current index
-        let current_fault = if has_faults {
-            let faults_vec: Vec<_> = active_faults.values().collect();
-            if current_fault_index < faults_vec.len() {
-                Some(faults_vec[current_fault_index])
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+            .center_x()
+        ]
+        .spacing(2)
+        .into();
+    }
 
-        // Display current fault or a message
-        if let Some(fault) = current_fault {
-            // Left side (25%) shows count, right side (75%) shows cycling fault
+    // Sort faults by timestamp (most recent first)
+    let mut faults_vec: Vec<_> = active_faults.values().collect();
+    faults_vec.sort_by(|a, b| b.timestamp.cmp(&a.timestamp));
+
+    // Calculate the range of faults to display for current page
+    let start_index = current_page * FAULTS_PER_PAGE;
+    let end_index = std::cmp::min(start_index + FAULTS_PER_PAGE, fault_count);
+
+    // Get the faults for the current page
+    let current_page_faults = &faults_vec[start_index..end_index];
+
+    // Create list of faults for current page
+    let mut fault_list = column![];
+
+    for (idx, fault) in current_page_faults.iter().enumerate() {
+        let fault_row = container(
             row![
-                container(
-                    text(format!("{}/{}", current_fault_index + 1, fault_count))
-                        .size(16)
-                        .horizontal_alignment(iced::alignment::Horizontal::Center)
-                )
-                .width(Length::FillPortion(1))
-                .center_x()
-                .center_y(),
-                container(
-                    row![
-                        text(&fault.name).width(Length::FillPortion(3)),
-                        text(&fault.value).width(Length::FillPortion(1)),
-                    ]
-                    .spacing(10)
-                    .align_items(Alignment::Center)
-                )
-                .width(Length::FillPortion(3))
-                .padding(10)
+                // Timestamp
+                container(text(fault.timestamp.format("%H:%M:%S").to_string()).size(12))
+                    .width(Length::FillPortion(1)),
+                // Message source
+                container(text(&fault.message_name).size(12)).width(Length::FillPortion(1)),
+                // Fault name/signal
+                container(text(&fault.name).size(12)).width(Length::FillPortion(2)),
+                // Value
+                container(text(&fault.value).size(12)).width(Length::FillPortion(1)),
             ]
             .spacing(5)
             .align_items(Alignment::Center)
-            .width(Length::Fill)
-            .into()
-        } else {
-            // Fallback (should never happen with has_faults check above)
-            container(text("No active faults").size(14))
-                .width(Length::Fill)
-                .center_x()
-                .padding(10)
-                .into()
-        }
-    };
+            .padding(3),
+        )
+        .width(Length::Fill)
+        .style(
+            // Alternate row colors for better readability
+            if idx % 2 == 0 {
+                iced::theme::Container::Custom(Box::new(|theme: &iced::Theme| {
+                    let mut appearance = theme.appearance(&iced::theme::Container::Box);
+                    appearance.background = Some(Color::from_rgba(0.8, 0.0, 0.0, 0.1).into());
+                    appearance.border.color = Color::from_rgb(0.8, 0.0, 0.0);
+                    appearance.border.width = 1.0;
+                    appearance
+                }))
+            } else {
+                iced::theme::Container::Custom(Box::new(|theme: &iced::Theme| {
+                    let mut appearance = theme.appearance(&iced::theme::Container::Box);
+                    appearance.background = Some(Color::from_rgba(0.8, 0.0, 0.0, 0.05).into());
+                    appearance.border.color = Color::from_rgb(0.8, 0.0, 0.0);
+                    appearance.border.width = 1.0;
+                    appearance
+                }))
+            },
+        );
 
-    // Clear faults button
-    let clear_button = button("Clear Faults")
-        .on_press(Message::ClearFaults)
-        .width(Length::Shrink);
+        fault_list = fault_list.push(fault_row);
+    }
 
-    // Combine everything
+    // Add empty rows to maintain consistent height (always show space for 5 rows)
+    let empty_rows_needed = FAULTS_PER_PAGE - current_page_faults.len();
+    for i in 0..empty_rows_needed {
+        let empty_row = container(
+            row![
+                Space::with_width(Length::FillPortion(1)),
+                Space::with_width(Length::FillPortion(1)),
+                Space::with_width(Length::FillPortion(2)),
+                Space::with_width(Length::FillPortion(1)),
+            ]
+            .spacing(5)
+            .padding(3),
+        )
+        .width(Length::Fill)
+        .height(Length::Fixed(25.0)); // Match the height of fault rows
+
+        fault_list = fault_list.push(empty_row);
+    }
+
+    // Create header row for the fault list
+    let list_header = container(
+        row![
+            text("Time").size(12).width(Length::FillPortion(1)),
+            text("Source").size(12).width(Length::FillPortion(1)),
+            text("Fault").size(12).width(Length::FillPortion(2)),
+            text("Value").size(12).width(Length::FillPortion(1)),
+        ]
+        .spacing(5)
+        .padding(3),
+    )
+    .width(Length::Fill)
+    .style(iced::theme::Container::Custom(Box::new(
+        |theme: &iced::Theme| {
+            let mut appearance = theme.appearance(&iced::theme::Container::Box);
+            appearance.background = Some(Color::from_rgb(0.2, 0.2, 0.2).into());
+            appearance.text_color = Some(Color::WHITE);
+            appearance
+        },
+    )));
+
+    // Combine everything - no scrollable needed since we limit to 5 faults
     column![
         header,
-        content,
-        container(clear_button).width(Length::Fill).center_x(),
+        list_header,
+        container(fault_list).height(Length::Fixed(125.0)) // Fixed height for exactly 5 rows
     ]
-    .spacing(10)
-    .width(Length::Fill)
+    .spacing(0)
     .into()
 }
