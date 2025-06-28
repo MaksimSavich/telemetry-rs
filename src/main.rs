@@ -40,7 +40,7 @@ fn main() -> iced::Result {
         )
         .get_matches();
 
-    let lora_enabled = !matches.get_flag("disable-lora") && !matches.get_flag("rfd-only");
+    let lora_enabled = false;
     let rfd_enabled = !matches.get_flag("disable-rfd") && !matches.get_flag("lora-only");
 
     println!("Starting Telemetry Application");
