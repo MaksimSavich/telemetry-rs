@@ -203,6 +203,7 @@ impl Application for TelemetryGui {
                         // Check if this signal updates a GUI value
                         if let Some(gui_value_types) =
                             self.gui_value_mappings.get(&(message_name, signal))
+                            println!("Processing signal: {}", message_name);
                         {
                             // Clone the gui_value_types to avoid borrowing self
                             let gui_value_types_cloned = gui_value_types.clone();
@@ -410,7 +411,7 @@ impl TelemetryGui {
                 if let Ok(v) = value.parse::<f64>() {
                     // Convert RPM to MPH: RPM * wheel_circumference * 60 / 63360
                     // wheel_circumference = 23.5" * π
-                    self.speed_mph = 5.0;
+                    self.speed_mph = (v * 23.5 * std::f64::consts::PI * 60.0) / 63360.0;
                 }
             }
             GuiValueType::Direction => {
