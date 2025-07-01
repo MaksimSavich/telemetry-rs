@@ -114,7 +114,7 @@ pub fn get_gui_value_mappings() -> HashMap<(&'static str, &'static str), Vec<Gui
 
     // Battery/BPS data
     mappings.insert(
-        ("BMS_Power", "Pack_Summed_Voltage"),
+        ("BMS_Power", "Pack_Inst_Voltage"),
         vec![GuiValueType::BatteryVoltage],
     );
     mappings.insert(
