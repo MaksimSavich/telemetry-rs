@@ -200,6 +200,106 @@ impl CanDecoder {
             return 0;
         }
 
+        // For common cases, use Rust's built-in endian conversion functions
+        // This is more efficient and handles two's complement properly
+        if is_intel && start_bit % 8 == 0 {
+            match size {
+                8 => {
+                    let byte_index = start_bit / 8;
+                    if byte_index < data.len() {
+                        if is_signed {
+                            data[byte_index] as i8 as i64
+                        } else {
+                            data[byte_index] as i64
+                        }
+                    } else {
+                        0
+                    }
+                }
+                16 => {
+                    let byte_index = start_bit / 8;
+                    if byte_index + 1 < data.len() {
+                        if is_signed {
+                            // Use Rust's built-in little-endian i16 conversion
+                            i16::from_le_bytes([data[byte_index], data[byte_index + 1]]) as i64
+                        } else {
+                            u16::from_le_bytes([data[byte_index], data[byte_index + 1]]) as i64
+                        }
+                    } else {
+                        0
+                    }
+                }
+                32 => {
+                    let byte_index = start_bit / 8;
+                    if byte_index + 3 < data.len() {
+                        if is_signed {
+                            i32::from_le_bytes([
+                                data[byte_index],
+                                data[byte_index + 1],
+                                data[byte_index + 2],
+                                data[byte_index + 3],
+                            ]) as i64
+                        } else {
+                            u32::from_le_bytes([
+                                data[byte_index],
+                                data[byte_index + 1],
+                                data[byte_index + 2],
+                                data[byte_index + 3],
+                            ]) as i64
+                        }
+                    } else {
+                        0
+                    }
+                }
+                64 => {
+                    let byte_index = start_bit / 8;
+                    if byte_index + 7 < data.len() {
+                        if is_signed {
+                            i64::from_le_bytes([
+                                data[byte_index],
+                                data[byte_index + 1],
+                                data[byte_index + 2],
+                                data[byte_index + 3],
+                                data[byte_index + 4],
+                                data[byte_index + 5],
+                                data[byte_index + 6],
+                                data[byte_index + 7],
+                            ])
+                        } else {
+                            u64::from_le_bytes([
+                                data[byte_index],
+                                data[byte_index + 1],
+                                data[byte_index + 2],
+                                data[byte_index + 3],
+                                data[byte_index + 4],
+                                data[byte_index + 5],
+                                data[byte_index + 6],
+                                data[byte_index + 7],
+                            ]) as i64
+                        }
+                    } else {
+                        0
+                    }
+                }
+                _ => {
+                    // Fall back to bit-by-bit extraction for non-standard sizes
+                    self.extract_signal_value_bit_by_bit(data, start_bit, size, is_intel, is_signed)
+                }
+            }
+        } else {
+            // For non-byte-aligned signals or big-endian, use bit-by-bit extraction
+            self.extract_signal_value_bit_by_bit(data, start_bit, size, is_intel, is_signed)
+        }
+    }
+
+    fn extract_signal_value_bit_by_bit(
+        &self,
+        data: &[u8],
+        start_bit: usize,
+        size: usize,
+        is_intel: bool,
+        is_signed: bool,
+    ) -> i64 {
         let mut raw_value = 0u64;
 
         if is_intel {
@@ -218,7 +318,7 @@ impl CanDecoder {
         } else {
             // Motorola format (big-endian)
             for i in 0..size {
-                let bit_pos = start_bit - i;
+                let bit_pos = start_bit.saturating_sub(i);
                 let byte_index = bit_pos / 8;
                 let bit_index = 7 - (bit_pos % 8);
 
