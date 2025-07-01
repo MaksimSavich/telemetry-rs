@@ -154,8 +154,8 @@ BO_ 2364612357 MSGID_0X0CF11F05: 8 MotorController_1
  SG_ Status_Switch_Signals : 40|8@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Status_Controller : 36|4@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Status_Of_Command : 32|4@1+ (1,0) [0|0] "" Vector__XXX
- SG_ Motor_Temperature_C : 16|8@1- (1.0,-30) [-30|225] "�C" Vector__XXX
- SG_ Controller_Temperature_C : 8|8@1- (1.0,-40) [-40|215] "�C" Vector__XXX
+ SG_ Motor_Temperature_C : 16|8@1- (1.0,-30) [-30|225] "C" Vector__XXX
+ SG_ Controller_Temperature_C : 8|8@1- (1.0,-40) [-40|215] "C" Vector__XXX
  SG_ Throttle_Signal : 0|8@1+ (0.0196,0) [0|5] "V" Vector__XXX
 
 BO_ 2364612102 MSGID_0X0CF11E06: 8 MotorController_2
@@ -183,8 +183,8 @@ BO_ 2364612358 MSGID_0X0CF11F06: 8 MotorController_2
  SG_ Status_Switch_Signals : 40|8@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Status_Controller : 36|4@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Status_Of_Command : 32|4@1+ (1,0) [0|0] "" Vector__XXX
- SG_ Motor_Temperature_C : 16|8@1- (1.0,-30) [-30|225] "�C" Vector__XXX
- SG_ Controller_Temperature_C : 8|8@1- (1.0,-40) [-40|215] "�C" Vector__XXX
+ SG_ Motor_Temperature_C : 16|8@1- (1.0,-30) [-30|225] "C" Vector__XXX
+ SG_ Controller_Temperature_C : 8|8@1- (1.0,-40) [-40|215] "C" Vector__XXX
  SG_ Throttle_Signal : 0|8@1+ (0.0196,0) [0|5] "V" Vector__XXX
 
 BO_ 0 MSGID_0X000: 8 MPPT
@@ -194,8 +194,8 @@ BO_ 0 MSGID_0X000: 8 MPPT
  SG_ Input_Voltage_V : 0|16@1- (0.01,0) [-327.0|327.0] "V" Vector__XXX
 
 BO_ 1 MSGID_0X001: 5 MPPT
- SG_ Heatsink_Temperature_C : 32|8@1- (1,0) [-128|127] "�C" Vector__XXX
- SG_ Ambient_Temperature_C : 24|8@1- (1,0) [-128|127] "�C" Vector__XXX
+ SG_ Heatsink_Temperature_C : 32|8@1- (1,0) [-128|127] "C" Vector__XXX
+ SG_ Ambient_Temperature_C : 24|8@1- (1,0) [-128|127] "C" Vector__XXX
  SG_ Enabled : 16|8@1+ (1,0) [0|0] "" Vector__XXX
  SG_ MPPT_Fault : 8|8@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Mode : 0|8@1+ (1,0) [0|0] "" Vector__XXX
@@ -206,20 +206,8 @@ BO_ 1910 BPS_Sense: 8 BPS
  SG_ BPS_Voltage : 16|16@1- (0.01,0) [-327.68|327.67] "V" Vector__XXX
  SG_ Low_Voltage_Current : 0|16@1+ (0.01,0) [0|0] "A" Vector__XXX
 
-BO_ 1911 BPS_State: 8 BPS
- SG_ Faulted_Value_2 : 48|16@1+ (0.01,0) [0|0] "" Vector__XXX
- SG_ Faulted_Value_1 : 32|16@1+ (0.01,0) [0|0] "" Vector__XXX
- SG_ BPS_ON_Time : 16|16@1+ (1,0) [0|65535] "seconds" Vector__XXX
- SG_ BPS_State : 13|3@1+ (1,0) [0|0] "" Vector__XXX
- SG_ Estop_Fault : 12|1@1+ (1,0) [0|0] "" Vector__XXX
- SG_ BMS_CAN_Timeout : 11|1@1+ (1,0) [0|0] "" Vector__XXX
- SG_ BMS_CAN_Warning : 10|1@1+ (1,0) [0|0] "" Vector__XXX
- SG_ BMS_CAN_Fault : 9|1@1+ (1,0) [0|0] "" Vector__XXX
- SG_ Precharge_Fault : 8|1@1+ (1,0) [0|0] "" Vector__XXX
- SG_ BPS_Current_Fault : 6|2@1+ (1,0) [0|0] "" Vector__XXX
- SG_ BPS_Main_Pack_Current_Fault : 4|2@1+ (1,0) [0|0] "" Vector__XXX
- SG_ DCDC_Voltage_Fault : 2|2@1+ (1,0) [0|0] "" Vector__XXX
- SG_ Supp_Voltage_Fault : 0|2@1+ (1,0) [0|0] "" Vector__XXX
+BO_ 1911 DCS_OUT: 2 DCS
+ SG_ Motor_Temperature_Data : 0|16@1+ (1,0) [-32768|32767] "C" Vector__XXX
 
 
 
@@ -282,16 +270,6 @@ VAL_ 2364612102 MC_ERR0 0 "OK" 1 "Identification error" ;
 VAL_ 2364612358 Status_Controller 0 "Stationary" 1 "Forward" 2 "Backward" ;
 VAL_ 2364612358 Status_Of_Command 0 "Neutral" 1 "Forward" 2 "Backward" ;
 VAL_ 1 MPPT_Fault 0 "OK" 1 "Configuration Error" 2 "Input Over Voltage" 3 "Output Over Voltage" 4 "Output Over Current" 5 "Input Over Current" 6 "Input Under Current" 7 "Phase Over Current" 8 "General Fault" ;
-VAL_ 1911 BPS_State 0 "STANDBY" 1 "PRIMARY" 2 "ACCESSORY" 3 "MPPT_CHARGING" 4 "WALL_CHARGING" 5 "FAULT" 6 "RESERVED" 7 "RESERVED" ;
-VAL_ 1911 Estop_Fault 0 "OK" 1 "E-stop Active" ;
-VAL_ 1911 BMS_CAN_Timeout 0 "OK" 1 "BMS Timeout" ;
-VAL_ 1911 BMS_CAN_Warning 0 "OK" 1 "BMS Warning" ;
-VAL_ 1911 BMS_CAN_Fault 0 "OK" 1 "BMS Fault" ;
-VAL_ 1911 Precharge_Fault 0 "OK" 1 "Precharge Fail" ;
-VAL_ 1911 BPS_Current_Fault 0 "OK" 1 "Over Current" 2 "No Current Sensor" 3 "Reserved" ;
-VAL_ 1911 BPS_Main_Pack_Current_Fault 0 "OK" 1 "Charge Current Fault" 2 "Discharge Current Fault" 3 "Reserved" ;
-VAL_ 1911 DCDC_Voltage_Fault 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "Reserved" ;
-VAL_ 1911 Supp_Voltage_Fault 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "Reserved" ;
 
 
 
