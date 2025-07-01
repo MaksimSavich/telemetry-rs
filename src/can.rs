@@ -1,3 +1,5 @@
+// Fixed src/can.rs - Updated CAN signal extraction with proper signed/unsigned handling
+
 use crate::gui_modules::{DTC_FLAGS_1_FAULTS, DTC_FLAGS_2_FAULTS};
 use can_dbc::DBC;
 use socketcan::{CanFrame, EmbeddedFrame};
@@ -154,7 +156,11 @@ impl CanDecoder {
                             can_dbc::ByteOrder::BigEndian => false,
                         };
 
-                        self.extract_signal_value(&data_array, start_bit, size, is_intel)
+                        // Determine if signal is signed by checking the minimum value
+                        // This is the most reliable way since DBC min values indicate signedness
+                        let is_signed = *signal.min() < 0.0;
+
+                        self.extract_signal_value(&data_array, start_bit, size, is_intel, is_signed)
                     };
 
                     // Scale raw value to engineering value
@@ -167,7 +173,7 @@ impl CanDecoder {
                         .and_then(|descs| {
                             descs
                                 .iter()
-                                .find(|desc| (*desc.a()) as u64 == raw_value)
+                                .find(|desc| (*desc.a()) as i64 == raw_value)
                                 .map(|d| d.b())
                         });
 
@@ -187,11 +193,17 @@ impl CanDecoder {
         start_bit: usize,
         size: usize,
         is_intel: bool,
-    ) -> u64 {
-        let mut value = 0u64;
+        is_signed: bool,
+    ) -> i64 {
+        // Validate input parameters
+        if size == 0 || size > 64 {
+            return 0;
+        }
+
+        let mut raw_value = 0u64;
 
         if is_intel {
-            // Intel format (little-endian) remains unchanged
+            // Intel format (little-endian)
             for i in 0..size {
                 let byte_index = (start_bit + i) / 8;
                 let bit_index = (start_bit + i) % 8;
@@ -199,12 +211,12 @@ impl CanDecoder {
                 if byte_index < data.len() {
                     let bit_value = (data[byte_index] & (1 << bit_index)) != 0;
                     if bit_value {
-                        value |= 1 << i;
+                        raw_value |= 1 << i;
                     }
                 }
             }
         } else {
-            // Motorola format (big-endian) - Fixed implementation
+            // Motorola format (big-endian)
             for i in 0..size {
                 let bit_pos = start_bit - i;
                 let byte_index = bit_pos / 8;
@@ -213,12 +225,29 @@ impl CanDecoder {
                 if byte_index < data.len() {
                     let bit_value = (data[byte_index] & (1 << bit_index)) != 0;
                     if bit_value {
-                        value |= 1 << (size - 1 - i);
+                        raw_value |= 1 << (size - 1 - i);
                     }
                 }
             }
         }
 
-        value
+        // Handle sign extension for signed values using two's complement
+        if is_signed && size > 0 && size <= 64 {
+            // Check if the sign bit (MSB) is set
+            let sign_bit = 1u64 << (size - 1);
+            if raw_value & sign_bit != 0 {
+                // Negative number: perform sign extension
+                // Create a mask with all upper bits set to 1
+                let mask = (!0u64) << size;
+                // Apply the mask to extend the sign bit
+                (raw_value | mask) as i64
+            } else {
+                // Positive number: just cast to signed
+                raw_value as i64
+            }
+        } else {
+            // Unsigned value: cast to signed (will be positive)
+            raw_value as i64
+        }
     }
 }
