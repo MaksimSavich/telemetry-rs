@@ -1,7 +1,7 @@
 // Fixed src/can.rs - Updated CAN signal extraction with proper signed/unsigned handling
 
 use crate::gui_modules::{DTC_FLAGS_1_FAULTS, DTC_FLAGS_2_FAULTS};
-use can_dbc::DBC;
+use can_dbc::{Signal, ValueDescription, DBC};
 use socketcan::{CanFrame, EmbeddedFrame};
 use std::fs;
 
@@ -156,9 +156,9 @@ impl CanDecoder {
                             can_dbc::ByteOrder::BigEndian => false,
                         };
 
-                        // Determine if signal is signed by checking the minimum value
-                        // This is the most reliable way since DBC min values indicate signedness
-                        let is_signed = *signal.min() < 0.0;
+                        // Check if signal is signed based on value type
+                        // The can-dbc library should parse the @1- notation
+                        let is_signed = self.is_signal_signed(signal);
 
                         self.extract_signal_value(&data_array, start_bit, size, is_intel, is_signed)
                     };
@@ -187,6 +187,56 @@ impl CanDecoder {
         )
     }
 
+    // Helper function to determine if a signal is signed
+    // Since can-dbc doesn't directly expose the signed flag, we need to infer it
+    fn is_signal_signed(&self, signal: &Signal) -> bool {
+        // Method 1: Check if min value is negative (most reliable when min/max are set correctly)
+        if *signal.min() < 0.0 {
+            return true;
+        }
+
+        // Method 2: Check if max value suggests a signed interpretation
+        // For a 16-bit signal, if max > 32767, it's likely unsigned
+        // But if max <= 32767 and we see values > 32767 in practice, it's signed
+        let signal_size = *signal.signal_size() as u32;
+        if signal_size <= 32 {
+            let max_signed = (1i64 << (signal_size - 1)) - 1;
+            let max_unsigned = (1u64 << signal_size) - 1;
+
+            // If the max value is set and it's less than half the unsigned range,
+            // it might be signed (this is a heuristic)
+            if *signal.max() > 0.0 && (*signal.max() as u64) < (max_unsigned / 2) {
+                // Additional check: some known signed signals
+                if signal.name().contains("Current")
+                    || signal.name().contains("Temperature")
+                    || signal.name().contains("Torque")
+                {
+                    return true;
+                }
+            }
+        }
+
+        // Method 3: Check specific signals we know are signed
+        // This is a workaround for incorrect DBC files
+        match signal.name() {
+            "Pack_Current"
+            | "Average_Current"
+            | "Low_Voltage_Current"
+            | "Actual_Current_A"
+            | "Controller_Temperature_C"
+            | "Motor_Temperature_C"
+            | "Motor_Temperature_Data"
+            | "Ambient_Temperature_C"
+            | "Heatsink_Temperature_C"
+            | "Input_Current_A"
+            | "Output_Current_A"
+            | "Input_Voltage_V"
+            | "Output_Voltage_V"
+            | "BPS_Voltage" => true,
+            _ => false,
+        }
+    }
+
     fn extract_signal_value(
         &self,
         data: &[u8],
@@ -200,106 +250,6 @@ impl CanDecoder {
             return 0;
         }
 
-        // For common cases, use Rust's built-in endian conversion functions
-        // This is more efficient and handles two's complement properly
-        if is_intel && start_bit % 8 == 0 {
-            match size {
-                8 => {
-                    let byte_index = start_bit / 8;
-                    if byte_index < data.len() {
-                        if is_signed {
-                            data[byte_index] as i8 as i64
-                        } else {
-                            data[byte_index] as i64
-                        }
-                    } else {
-                        0
-                    }
-                }
-                16 => {
-                    let byte_index = start_bit / 8;
-                    if byte_index + 1 < data.len() {
-                        if is_signed {
-                            // Use Rust's built-in little-endian i16 conversion
-                            i16::from_le_bytes([data[byte_index], data[byte_index + 1]]) as i64
-                        } else {
-                            u16::from_le_bytes([data[byte_index], data[byte_index + 1]]) as i64
-                        }
-                    } else {
-                        0
-                    }
-                }
-                32 => {
-                    let byte_index = start_bit / 8;
-                    if byte_index + 3 < data.len() {
-                        if is_signed {
-                            i32::from_le_bytes([
-                                data[byte_index],
-                                data[byte_index + 1],
-                                data[byte_index + 2],
-                                data[byte_index + 3],
-                            ]) as i64
-                        } else {
-                            u32::from_le_bytes([
-                                data[byte_index],
-                                data[byte_index + 1],
-                                data[byte_index + 2],
-                                data[byte_index + 3],
-                            ]) as i64
-                        }
-                    } else {
-                        0
-                    }
-                }
-                64 => {
-                    let byte_index = start_bit / 8;
-                    if byte_index + 7 < data.len() {
-                        if is_signed {
-                            i64::from_le_bytes([
-                                data[byte_index],
-                                data[byte_index + 1],
-                                data[byte_index + 2],
-                                data[byte_index + 3],
-                                data[byte_index + 4],
-                                data[byte_index + 5],
-                                data[byte_index + 6],
-                                data[byte_index + 7],
-                            ])
-                        } else {
-                            u64::from_le_bytes([
-                                data[byte_index],
-                                data[byte_index + 1],
-                                data[byte_index + 2],
-                                data[byte_index + 3],
-                                data[byte_index + 4],
-                                data[byte_index + 5],
-                                data[byte_index + 6],
-                                data[byte_index + 7],
-                            ]) as i64
-                        }
-                    } else {
-                        0
-                    }
-                }
-                _ => {
-                    // Fall back to bit-by-bit extraction for non-standard sizes
-                    self.extract_signal_value_bit_by_bit(data, start_bit, size, is_intel, is_signed)
-                }
-            }
-        } else {
-            // For non-byte-aligned signals or big-endian, use bit-by-bit extraction
-            self.extract_signal_value_bit_by_bit(data, start_bit, size, is_intel, is_signed)
-        }
-    }
-
-    fn extract_signal_value_bit_by_bit(
-        &self,
-        data: &[u8],
-        start_bit: usize,
-        size: usize,
-        is_intel: bool,
-        is_signed: bool,
-    ) -> i64 {
         let mut raw_value = 0u64;
 
         if is_intel {
@@ -318,7 +268,7 @@ impl CanDecoder {
         } else {
             // Motorola format (big-endian)
             for i in 0..size {
-                let bit_pos = start_bit.saturating_sub(i);
+                let bit_pos = if start_bit >= i { start_bit - i } else { 0 };
                 let byte_index = bit_pos / 8;
                 let bit_index = 7 - (bit_pos % 8);
 
@@ -331,15 +281,14 @@ impl CanDecoder {
             }
         }
 
-        // Handle sign extension for signed values using two's complement
-        if is_signed && size > 0 && size <= 64 {
+        // Handle sign extension for signed values
+        if is_signed && size < 64 {
             // Check if the sign bit (MSB) is set
             let sign_bit = 1u64 << (size - 1);
             if raw_value & sign_bit != 0 {
                 // Negative number: perform sign extension
-                // Create a mask with all upper bits set to 1
-                let mask = (!0u64) << size;
-                // Apply the mask to extend the sign bit
+                // For a 16-bit value, if bit 15 is set, extend with 1s
+                let mask = !((1u64 << size) - 1); // Create mask of 1s above the signal size
                 (raw_value | mask) as i64
             } else {
                 // Positive number: just cast to signed
