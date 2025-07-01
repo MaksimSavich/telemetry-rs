@@ -143,6 +143,16 @@ pub fn get_gui_value_mappings() -> HashMap<(&'static str, &'static str), Vec<Gui
     mappings.insert(("BPS_Thing", "BPS_ON_Time"), vec![GuiValueType::BpsOnTime]);
     mappings.insert(("BPS_Thing", "BPS_State"), vec![GuiValueType::BpsState]);
 
+    // MPPT data - assuming MPPT message structure
+    mappings.insert(("MPPT", "MPPT1_Input_Voltage"), vec![GuiValueType::Mppt1InputVoltage]);
+    mappings.insert(("MPPT", "MPPT1_Input_Current"), vec![GuiValueType::Mppt1InputCurrent]);
+    mappings.insert(("MPPT", "MPPT1_Output_Voltage"), vec![GuiValueType::Mppt1OutputVoltage]);
+    mappings.insert(("MPPT", "MPPT1_Output_Current"), vec![GuiValueType::Mppt1OutputCurrent]);
+    mappings.insert(("MPPT", "MPPT2_Input_Voltage"), vec![GuiValueType::Mppt2InputVoltage]);
+    mappings.insert(("MPPT", "MPPT2_Input_Current"), vec![GuiValueType::Mppt2InputCurrent]);
+    mappings.insert(("MPPT", "MPPT2_Output_Voltage"), vec![GuiValueType::Mppt2OutputVoltage]);
+    mappings.insert(("MPPT", "MPPT2_Output_Current"), vec![GuiValueType::Mppt2OutputCurrent]);
+
     mappings
 }
 
@@ -171,6 +181,14 @@ pub enum GuiValueType {
     Motor2Speed,
     Motor1Direction,
     Motor2Direction,
+    Mppt1InputVoltage,
+    Mppt1InputCurrent,
+    Mppt1OutputVoltage,
+    Mppt1OutputCurrent,
+    Mppt2InputVoltage,
+    Mppt2InputCurrent,
+    Mppt2OutputVoltage,
+    Mppt2OutputCurrent,
 }
 
 // Configuration for fault signals - defines which signals in which messages are faults

@@ -27,8 +27,8 @@ pub struct TelemetryGui {
     motor1_last_update: Option<std::time::Instant>,
     motor2_last_update: Option<std::time::Instant>,
 
-    // BMS data
-    bms_data: BmsData,
+    // MPPT data
+    mppt_data: MpptData,
 
     // Battery data
     battery_voltage: f64,
@@ -147,7 +147,7 @@ impl Application for TelemetryGui {
                 lora_enabled,
                 rfd_enabled,
                 current_time: Local::now().format("%H:%M:%S").to_string(),
-                bms_data: BmsData::default(),
+                mppt_data: MpptData::default(),
 
                 // Initialize configuration mappings
                 gui_value_mappings: get_gui_value_mappings(),
@@ -336,7 +336,7 @@ impl Application for TelemetryGui {
             self.lora_connected && self.lora_enabled,
             self.rfd_connected && self.rfd_enabled,
         );
-        let bms_info = bms_info_box(&self.bms_data);
+        let mppt_info = mppt_info_box(&self.mppt_data);
         let speed_direction = direction_speed_display(&self.direction, self.speed_mph);
         let battery_info = battery_box(&battery_data);
         let bps_info = bps_box(&bps_data);
@@ -348,7 +348,7 @@ impl Application for TelemetryGui {
             self.fullscreen,
             can_status,
             radio_status,
-            bms_info,
+            mppt_info,
             speed_direction,
             battery_info,
             bps_info,
@@ -448,54 +448,44 @@ impl TelemetryGui {
                 self.motor2_direction = value.to_string();
                 self.update_vehicle_direction();
             }
-            GuiValueType::BmsPackDcl => {
+            GuiValueType::Mppt1InputVoltage => {
                 if let Ok(v) = value.parse::<f64>() {
-                    self.bms_data.pack_dcl = v;
+                    self.mppt_data.mppt1_input_voltage = v;
                 }
             }
-            GuiValueType::BmsPackDclKw => {
+            GuiValueType::Mppt1InputCurrent => {
                 if let Ok(v) = value.parse::<f64>() {
-                    self.bms_data.pack_dcl_kw = v;
+                    self.mppt_data.mppt1_input_current = v;
                 }
             }
-            GuiValueType::BmsPackCcl => {
+            GuiValueType::Mppt1OutputVoltage => {
                 if let Ok(v) = value.parse::<f64>() {
-                    self.bms_data.pack_ccl = v;
+                    self.mppt_data.mppt1_output_voltage = v;
                 }
             }
-            GuiValueType::BmsPackCclKw => {
+            GuiValueType::Mppt1OutputCurrent => {
                 if let Ok(v) = value.parse::<f64>() {
-                    self.bms_data.pack_ccl_kw = v;
+                    self.mppt_data.mppt1_output_current = v;
                 }
             }
-            GuiValueType::BmsPackDod => {
+            GuiValueType::Mppt2InputVoltage => {
                 if let Ok(v) = value.parse::<f64>() {
-                    self.bms_data.pack_dod = v;
+                    self.mppt_data.mppt2_input_voltage = v;
                 }
             }
-            GuiValueType::BmsPackHealth => {
+            GuiValueType::Mppt2InputCurrent => {
                 if let Ok(v) = value.parse::<f64>() {
-                    self.bms_data.pack_health = v;
+                    self.mppt_data.mppt2_input_current = v;
                 }
             }
-            GuiValueType::BmsAdaptiveSoc => {
+            GuiValueType::Mppt2OutputVoltage => {
                 if let Ok(v) = value.parse::<f64>() {
-                    self.bms_data.adaptive_soc = v;
+                    self.mppt_data.mppt2_output_voltage = v;
                 }
             }
-            GuiValueType::BmsPackSoc => {
+            GuiValueType::Mppt2OutputCurrent => {
                 if let Ok(v) = value.parse::<f64>() {
-                    self.bms_data.pack_soc = v;
-                }
-            }
-            GuiValueType::BmsAdaptiveAmphours => {
-                if let Ok(v) = value.parse::<f64>() {
-                    self.bms_data.adaptive_amphours = v;
-                }
-            }
-            GuiValueType::BmsPackAmphours => {
-                if let Ok(v) = value.parse::<f64>() {
-                    self.bms_data.pack_amphours = v;
+                    self.mppt_data.mppt2_output_current = v;
                 }
             }
             GuiValueType::BatteryVoltage => {
@@ -535,6 +525,36 @@ impl TelemetryGui {
             }
             GuiValueType::BpsState => {
                 self.bps_state = value.to_string();
+            }
+            GuiValueType::BmsPackDcl => {
+                // BMS data no longer displayed in main info box
+            }
+            GuiValueType::BmsPackDclKw => {
+                // BMS data no longer displayed in main info box
+            }
+            GuiValueType::BmsPackCcl => {
+                // BMS data no longer displayed in main info box
+            }
+            GuiValueType::BmsPackCclKw => {
+                // BMS data no longer displayed in main info box
+            }
+            GuiValueType::BmsPackDod => {
+                // BMS data no longer displayed in main info box
+            }
+            GuiValueType::BmsPackHealth => {
+                // BMS data no longer displayed in main info box
+            }
+            GuiValueType::BmsAdaptiveSoc => {
+                // BMS data no longer displayed in main info box
+            }
+            GuiValueType::BmsPackSoc => {
+                // BMS data no longer displayed in main info box
+            }
+            GuiValueType::BmsAdaptiveAmphours => {
+                // BMS data no longer displayed in main info box
+            }
+            GuiValueType::BmsPackAmphours => {
+                // BMS data no longer displayed in main info box
             }
         }
     }

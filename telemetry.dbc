@@ -187,26 +187,26 @@ BO_ 2364612358 MSGID_0X0CF11F06: 8 MotorController_2
  SG_ Controller_Temperature_C : 8|8@1- (1.0,-40) [-40|215] "C" Vector__XXX
  SG_ Throttle_Signal : 0|8@1+ (0.0196,0) [0|5] "V" Vector__XXX
 
-BO_ 512 MSGID_0X200: 8 MPPT
+BO_ 512 MSGID_0X200: 8 MPPT1
  SG_ Output_Current_A : 48|16@1- (0.0005,0) [-16.0|16.0] "A" Vector__XXX
  SG_ Output_Voltage_V : 32|16@1- (0.01,0) [-327.0|327.0] "V" Vector__XXX
  SG_ Input_Current_A : 16|16@1- (0.0005,0) [-16.0|16.0] "A" Vector__XXX
  SG_ Input_Voltage_V : 0|16@1- (0.01,0) [-327.0|327.0] "V" Vector__XXX
 
-BO_ 513 MSGID_0X201: 5 MPPT
+BO_ 513 MSGID_0X201: 5 MPPT1
  SG_ Heatsink_Temperature_C : 32|8@1- (1,0) [-128|127] "C" Vector__XXX
  SG_ Ambient_Temperature_C : 24|8@1- (1,0) [-128|127] "C" Vector__XXX
  SG_ Enabled : 16|8@1+ (1,0) [0|0] "" Vector__XXX
  SG_ MPPT_Fault : 8|8@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Mode : 0|8@1+ (1,0) [0|0] "" Vector__XXX
 
-BO_ 514 MSGID_0X202: 8 MPPT
+BO_ 514 MSGID_0X202: 8 MPPT2
  SG_ Output_Current_A : 48|16@1- (0.0005,0) [-16.0|16.0] "A" Vector__XXX
  SG_ Output_Voltage_V : 32|16@1- (0.01,0) [-327.0|327.0] "V" Vector__XXX
  SG_ Input_Current_A : 16|16@1- (0.0005,0) [-16.0|16.0] "A" Vector__XXX
  SG_ Input_Voltage_V : 0|16@1- (0.01,0) [-327.0|327.0] "V" Vector__XXX
 
-BO_ 515 MSGID_0X203: 5 MPPT
+BO_ 515 MSGID_0X203: 5 MPPT2
  SG_ Heatsink_Temperature_C : 32|8@1- (1,0) [-128|127] "C" Vector__XXX
  SG_ Ambient_Temperature_C : 24|8@1- (1,0) [-128|127] "C" Vector__XXX
  SG_ Enabled : 16|8@1+ (1,0) [0|0] "" Vector__XXX
