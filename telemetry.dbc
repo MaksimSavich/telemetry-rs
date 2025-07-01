@@ -187,13 +187,13 @@ BO_ 2364612358 MSGID_0X0CF11F06: 8 MotorController_2
  SG_ Controller_Temperature_C : 8|8@1- (1.0,-40) [-40|215] "C" Vector__XXX
  SG_ Throttle_Signal : 0|8@1+ (0.0196,0) [0|5] "V" Vector__XXX
 
-BO_ 0 MSGID_0X000: 8 MPPT
+BO_ 512 MSGID_0X200: 8 MPPT
  SG_ Output_Current_A : 48|16@1- (0.0005,0) [-16.0|16.0] "A" Vector__XXX
  SG_ Output_Voltage_V : 32|16@1- (0.01,0) [-327.0|327.0] "V" Vector__XXX
  SG_ Input_Current_A : 16|16@1- (0.0005,0) [-16.0|16.0] "A" Vector__XXX
  SG_ Input_Voltage_V : 0|16@1- (0.01,0) [-327.0|327.0] "V" Vector__XXX
 
-BO_ 1 MSGID_0X001: 5 MPPT
+BO_ 513 MSGID_0X201: 5 MPPT
  SG_ Heatsink_Temperature_C : 32|8@1- (1,0) [-128|127] "C" Vector__XXX
  SG_ Ambient_Temperature_C : 24|8@1- (1,0) [-128|127] "C" Vector__XXX
  SG_ Enabled : 16|8@1+ (1,0) [0|0] "" Vector__XXX
@@ -244,8 +244,8 @@ BA_ "GenMsgCycleTime" BO_ 2364612101 50;
 BA_ "GenMsgCycleTime" BO_ 2364612357 50;
 BA_ "GenMsgCycleTime" BO_ 2364612102 50;
 BA_ "GenMsgCycleTime" BO_ 2364612358 50;
-BA_ "GenMsgCycleTime" BO_ 0 500;
-BA_ "GenMsgCycleTime" BO_ 1 1000;
+BA_ "GenMsgCycleTime" BO_ 512 500;
+BA_ "GenMsgCycleTime" BO_ 513 1000;
 BA_ "GenMsgCycleTime" BO_ 1910 100;
 BA_ "GenMsgCycleTime" BO_ 1911 100;
 BA_ "GenMsgCycleTime" BO_ 1680 100;
@@ -285,7 +285,7 @@ VAL_ 2364612102 MC_ERR1 0 "OK" 1 "Over voltage" ;
 VAL_ 2364612102 MC_ERR0 0 "OK" 1 "Identification error" ;
 VAL_ 2364612358 Status_Controller 0 "Stationary" 1 "Forward" 2 "Backward" ;
 VAL_ 2364612358 Status_Of_Command 0 "Neutral" 1 "Forward" 2 "Backward" ;
-VAL_ 1 MPPT_Fault 0 "OK" 1 "Configuration Error" 2 "Input Over Voltage" 3 "Output Over Voltage" 4 "Output Over Current" 5 "Input Over Current" 6 "Input Under Current" 7 "Phase Over Current" 8 "General Fault" ;
+VAL_ 513 MPPT_Fault 0 "OK" 1 "Configuration Error" 2 "Input Over Voltage" 3 "Output Over Voltage" 4 "Output Over Current" 5 "Input Over Current" 6 "Input Under Current" 7 "Phase Over Current" 8 "General Fault" ;
 VAL_ 1911 BPS_State 0 "STANDBY" 1 "PRIMARY" 2 "ACCESSORY" 3 "MPPT_CHARGING" 4 "WALL_CHARGING" 5 "FAULT" 6 "RESERVED" 7 "RESERVED" ;
 VAL_ 1911 Estop_Fault 0 "OK" 1 "E-stop Active" ;
 VAL_ 1911 BMS_CAN_Timeout 0 "OK" 1 "BMS Timeout" ;
