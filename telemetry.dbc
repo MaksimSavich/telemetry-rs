@@ -200,6 +200,19 @@ BO_ 513 MSGID_0X201: 5 MPPT
  SG_ MPPT_Fault : 8|8@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Mode : 0|8@1+ (1,0) [0|0] "" Vector__XXX
 
+BO_ 514 MSGID_0X202: 8 MPPT
+ SG_ Output_Current_A : 48|16@1- (0.0005,0) [-16.0|16.0] "A" Vector__XXX
+ SG_ Output_Voltage_V : 32|16@1- (0.01,0) [-327.0|327.0] "V" Vector__XXX
+ SG_ Input_Current_A : 16|16@1- (0.0005,0) [-16.0|16.0] "A" Vector__XXX
+ SG_ Input_Voltage_V : 0|16@1- (0.01,0) [-327.0|327.0] "V" Vector__XXX
+
+BO_ 515 MSGID_0X203: 5 MPPT
+ SG_ Heatsink_Temperature_C : 32|8@1- (1,0) [-128|127] "C" Vector__XXX
+ SG_ Ambient_Temperature_C : 24|8@1- (1,0) [-128|127] "C" Vector__XXX
+ SG_ Enabled : 16|8@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ MPPT_Fault : 8|8@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ Mode : 0|8@1+ (1,0) [0|0] "" Vector__XXX
+
 BO_ 1910 BPS_Sense: 8 BPS
  SG_ Supp_Charge_Current : 48|16@1+ (0.01,0) [0|0] "A" Vector__XXX
  SG_ DCDC_Voltage : 32|16@1+ (0.01,0) [0|0] "V" Vector__XXX
@@ -246,6 +259,8 @@ BA_ "GenMsgCycleTime" BO_ 2364612102 50;
 BA_ "GenMsgCycleTime" BO_ 2364612358 50;
 BA_ "GenMsgCycleTime" BO_ 512 500;
 BA_ "GenMsgCycleTime" BO_ 513 1000;
+BA_ "GenMsgCycleTime" BO_ 514 500;
+BA_ "GenMsgCycleTime" BO_ 515 1000;
 BA_ "GenMsgCycleTime" BO_ 1910 100;
 BA_ "GenMsgCycleTime" BO_ 1911 100;
 BA_ "GenMsgCycleTime" BO_ 1680 100;
@@ -286,6 +301,7 @@ VAL_ 2364612102 MC_ERR0 0 "OK" 1 "Identification error" ;
 VAL_ 2364612358 Status_Controller 0 "Stationary" 1 "Forward" 2 "Backward" ;
 VAL_ 2364612358 Status_Of_Command 0 "Neutral" 1 "Forward" 2 "Backward" ;
 VAL_ 513 MPPT_Fault 0 "OK" 1 "Configuration Error" 2 "Input Over Voltage" 3 "Output Over Voltage" 4 "Output Over Current" 5 "Input Over Current" 6 "Input Under Current" 7 "Phase Over Current" 8 "General Fault" ;
+VAL_ 515 MPPT_Fault 0 "OK" 1 "Configuration Error" 2 "Input Over Voltage" 3 "Output Over Voltage" 4 "Output Over Current" 5 "Input Over Current" 6 "Input Under Current" 7 "Phase Over Current" 8 "General Fault" ;
 VAL_ 1911 BPS_State 0 "STANDBY" 1 "PRIMARY" 2 "ACCESSORY" 3 "MPPT_CHARGING" 4 "WALL_CHARGING" 5 "FAULT" 6 "RESERVED" 7 "RESERVED" ;
 VAL_ 1911 Estop_Fault 0 "OK" 1 "E-stop Active" ;
 VAL_ 1911 BMS_CAN_Timeout 0 "OK" 1 "BMS Timeout" ;
