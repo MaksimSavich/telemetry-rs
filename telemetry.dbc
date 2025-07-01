@@ -216,8 +216,8 @@ BO_ 1911 BPS_State: 8 BPS
  SG_ BMS_CAN_Warning : 10|1@1+ (1,0) [0|0] "" Vector__XXX
  SG_ BMS_CAN_Fault : 9|1@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Precharge_Fault : 8|1@1+ (1,0) [0|0] "" Vector__XXX
- SG_ Supp_Charge_Current_Fault : 6|2@1+ (1,0) [0|0] "" Vector__XXX
- SG_ BPS_Current_Fault : 4|2@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BPS_Current_Fault : 6|2@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BPS_Main_Pack_Current_Fault : 4|2@1+ (1,0) [0|0] "" Vector__XXX
  SG_ DCDC_Voltage_Fault : 2|2@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Supp_Voltage_Fault : 0|2@1+ (1,0) [0|0] "" Vector__XXX
 
@@ -288,8 +288,8 @@ VAL_ 1911 BMS_CAN_Timeout 0 "OK" 1 "BMS Timeout" ;
 VAL_ 1911 BMS_CAN_Warning 0 "OK" 1 "BMS Warning" ;
 VAL_ 1911 BMS_CAN_Fault 0 "OK" 1 "BMS Fault" ;
 VAL_ 1911 Precharge_Fault 0 "OK" 1 "Precharge Fail" ;
-VAL_ 1911 Supp_Charge_Current_Fault 0 "OK" 1 "Over Current" 2 "No Current Sensor" 3 "Reserved" ;
-VAL_ 1911 BPS_Current_Fault 0 "OK" 1 "Sensor Broken" 2 "Over Current" 3 "Reserved" ;
+VAL_ 1911 BPS_Current_Fault 0 "OK" 1 "Over Current" 2 "No Current Sensor" 3 "Reserved" ;
+VAL_ 1911 BPS_Main_Pack_Current_Fault 0 "OK" 1 "Charge Current Fault" 2 "Discharge Current Fault" 3 "Reserved" ;
 VAL_ 1911 DCDC_Voltage_Fault 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "Reserved" ;
 VAL_ 1911 Supp_Voltage_Fault 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "Reserved" ;
 
