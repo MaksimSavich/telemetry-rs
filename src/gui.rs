@@ -181,7 +181,8 @@ impl Application for TelemetryGui {
                     0x330 => "BMS_State",
                     0x340 => "BMS_Capacity",
                     0x360 => "BMS_Temperature",
-                    0x776 | 0x777 => "BPS_System",
+                    0x776 => "BPS_System",
+                    0x777 => "BPS_Thing",
                     0x0 | 0x1 => "MPPT",
                     // Motor Controller 1 (ID ending in 05)
                     id if id == 0x0CF11E05
