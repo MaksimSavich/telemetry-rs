@@ -140,8 +140,8 @@ pub fn get_gui_value_mappings() -> HashMap<(&'static str, &'static str), Vec<Gui
         ("BMS_Temperature", "Low_Temperature"),
         vec![GuiValueType::BatteryTempLo],
     );
-    mappings.insert(("BPS_System", "BPS_ON_Time"), vec![GuiValueType::BpsOnTime]);
-    mappings.insert(("BPS_System", "BPS_State"), vec![GuiValueType::BpsState]);
+    mappings.insert(("BPS_Thing", "BPS_ON_Time"), vec![GuiValueType::BpsOnTime]);
+    mappings.insert(("BPS_Thing", "BPS_State"), vec![GuiValueType::BpsState]);
 
     mappings
 }
