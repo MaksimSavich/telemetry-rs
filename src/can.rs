@@ -218,7 +218,7 @@ impl CanDecoder {
 
         // Method 3: Check specific signals we know are signed
         // This is a workaround for incorrect DBC files
-        match signal.name() {
+        match signal.name().as_str() {
             "Pack_Current"
             | "Average_Current"
             | "Low_Voltage_Current"
