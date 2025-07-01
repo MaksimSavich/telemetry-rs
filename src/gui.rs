@@ -16,8 +16,16 @@ pub struct TelemetryGui {
     can_connected: bool,
 
     // Motor data
-    speed_mph: f64,
+    motor1_speed_rpm: f64,
+    motor2_speed_rpm: f64,
+    motor1_direction: String,
+    motor2_direction: String,
+
+    speed_mph: f64, // This becomes the calculated result
     direction: String,
+
+    motor1_last_update: Option<std::time::Instant>,
+    motor2_last_update: Option<std::time::Instant>,
 
     // BMS data
     bms_data: BmsData,
@@ -107,7 +115,14 @@ impl Application for TelemetryGui {
                 can_connected: false,
                 direction: "Neutral".into(),
                 fullscreen: true,
+
+                motor1_speed_rpm: 0.0,
+                motor2_speed_rpm: 0.0,
+                motor1_direction: "Neutral".into(),
+                motor2_direction: "Neutral".into(),
                 speed_mph: 0.0,
+                motor1_last_update: None,
+                motor2_last_update: None,
                 battery_voltage: 0.0,
                 battery_current: 0.0,
                 battery_charge: 0.0,
@@ -408,15 +423,29 @@ impl TelemetryGui {
     // Helper method to update GUI values based on the configuration
     fn update_gui_value(&mut self, gui_value_type: &GuiValueType, value: &str) {
         match gui_value_type {
-            GuiValueType::Speed => {
+            GuiValueType::Motor1Speed => {
                 if let Ok(v) = value.parse::<f64>() {
-                    // Convert RPM to MPH: RPM * wheel_circumference * 60 / 63360
-                    // wheel_circumference = 23.5" * π
-                    self.speed_mph = (v * 23.5 * std::f64::consts::PI * 60.0) / 63360.0;
+                    self.motor1_speed_rpm = v;
+                    self.motor1_last_update = Some(std::time::Instant::now());
+                    // Trigger speed recalculation immediately
+                    self.update_vehicle_speed();
                 }
             }
-            GuiValueType::Direction => {
-                self.direction = value.to_string();
+            GuiValueType::Motor2Speed => {
+                if let Ok(v) = value.parse::<f64>() {
+                    self.motor2_speed_rpm = v;
+                    self.motor2_last_update = Some(std::time::Instant::now());
+                    // Trigger speed recalculation immediately
+                    self.update_vehicle_speed();
+                }
+            }
+            GuiValueType::Motor1Direction => {
+                self.motor1_direction = value.to_string();
+                self.update_vehicle_direction();
+            }
+            GuiValueType::Motor2Direction => {
+                self.motor2_direction = value.to_string();
+                self.update_vehicle_direction();
             }
             GuiValueType::BmsPackDcl => {
                 if let Ok(v) = value.parse::<f64>() {
@@ -565,5 +594,78 @@ impl TelemetryGui {
                 }
             });
         }
+    }
+
+    fn update_vehicle_speed(&mut self) {
+        // Check data freshness (optional - helps with stale data)
+        let now = std::time::Instant::now();
+        let max_age = std::time::Duration::from_millis(500); // 500ms max age
+
+        let motor1_fresh = self
+            .motor1_last_update
+            .map(|t| now.duration_since(t) < max_age)
+            .unwrap_or(false);
+        let motor2_fresh = self
+            .motor2_last_update
+            .map(|t| now.duration_since(t) < max_age)
+            .unwrap_or(false);
+
+        // Calculate speed using available data
+        let (motor1_rpm, motor2_rpm) = match (motor1_fresh, motor2_fresh) {
+            (true, true) => (self.motor1_speed_rpm, self.motor2_speed_rpm),
+            (true, false) => (self.motor1_speed_rpm, 0.0), // Only motor 1 data is fresh
+            (false, true) => (0.0, self.motor2_speed_rpm), // Only motor 2 data is fresh
+            (false, false) => (0.0, 0.0),                  // No fresh data
+        };
+
+        // Apply your enhanced speed calculation
+        self.speed_mph = self.calculate_dual_motor_speed(motor1_rpm, motor2_rpm);
+    }
+
+    fn calculate_dual_motor_speed(&self, motor1_rpm: f64, motor2_rpm: f64) -> f64 {
+        let min_threshold = 10.0; // Filter noise below 10 RPM
+        let wheel_diameter = 23.5; // Make this configurable later
+
+        // Filter out noise
+        let motor1_filtered = if motor1_rpm.abs() >= min_threshold {
+            motor1_rpm
+        } else {
+            0.0
+        };
+        let motor2_filtered = if motor2_rpm.abs() >= min_threshold {
+            motor2_rpm
+        } else {
+            0.0
+        };
+
+        // Calculate average RPM
+        let avg_rpm = if motor1_filtered != 0.0 && motor2_filtered != 0.0 {
+            (motor1_filtered + motor2_filtered) / 2.0
+        } else if motor1_filtered != 0.0 {
+            motor1_filtered // Only motor 1 active
+        } else if motor2_filtered != 0.0 {
+            motor2_filtered // Only motor 2 active
+        } else {
+            0.0 // No motors active
+        };
+
+        // Convert to MPH
+        let wheel_circumference = wheel_diameter * std::f64::consts::PI;
+        (avg_rpm * wheel_circumference * 60.0) / 63360.0
+    }
+
+    fn update_vehicle_direction(&mut self) {
+        self.direction = match (
+            self.motor1_direction.as_str(),
+            self.motor2_direction.as_str(),
+        ) {
+            ("Forward", "Forward") => "Forward".to_string(),
+            ("Backward", "Backward") => "Backward".to_string(),
+            ("Neutral", "Neutral") => "Neutral".to_string(),
+            ("Forward", "Neutral") | ("Neutral", "Forward") => "Forward".to_string(),
+            ("Backward", "Neutral") | ("Neutral", "Backward") => "Backward".to_string(),
+            ("Forward", "Backward") | ("Backward", "Forward") => "Turning".to_string(),
+            _ => "Mixed".to_string(),
+        };
     }
 }

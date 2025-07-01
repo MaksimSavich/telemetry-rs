@@ -69,14 +69,21 @@ pub const DTC_FLAGS_2_FAULTS: &[(u16, &str)] = &[
 pub fn get_gui_value_mappings() -> HashMap<(&'static str, &'static str), Vec<GuiValueType>> {
     let mut mappings = HashMap::new();
 
-    // Motor data - using MotorController_1 for speed and MotorController_2 for direction
     mappings.insert(
         ("MotorController_1", "Actual_Speed_RPM"),
-        vec![GuiValueType::Speed],
+        vec![GuiValueType::Motor1Speed],
+    );
+    mappings.insert(
+        ("MotorController_2", "Actual_Speed_RPM"),
+        vec![GuiValueType::Motor2Speed],
+    );
+    mappings.insert(
+        ("MotorController_1", "Status_Of_Command"),
+        vec![GuiValueType::Motor1Direction],
     );
     mappings.insert(
         ("MotorController_2", "Status_Of_Command"),
-        vec![GuiValueType::Direction],
+        vec![GuiValueType::Motor2Direction],
     );
 
     // BMS data
@@ -142,8 +149,6 @@ pub fn get_gui_value_mappings() -> HashMap<(&'static str, &'static str), Vec<Gui
 // Enum for different GUI value types
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum GuiValueType {
-    Speed,
-    Direction,
     BmsPackDcl,
     BmsPackDclKw,
     BmsPackCcl,
@@ -162,6 +167,10 @@ pub enum GuiValueType {
     BatteryTempLo,
     BpsOnTime,
     BpsState,
+    Motor1Speed,
+    Motor2Speed,
+    Motor1Direction,
+    Motor2Direction,
 }
 
 // Configuration for fault signals - defines which signals in which messages are faults
