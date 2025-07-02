@@ -12,6 +12,7 @@ pub fn main_layout<'a>(
     bps_info: Element<'a, Message>,
     fault_display: Element<'a, Message>,
     time_display: Element<'a, Message>,
+    warning_indicator: Option<Element<'a, Message>>,
 ) -> Element<'a, Message> {
     // Top row: CAN status (left), spacer, radio status, fullscreen button (right)
     let top_row = container(
@@ -63,10 +64,23 @@ pub fn main_layout<'a>(
         .height(Length::Fixed(180.0)) // Fixed height container
         .padding([0, 10]);
 
-    // Bottom row with time
-    let bottom_row = container(time_display)
+    // Bottom row with time and optional warning
+    let bottom_row = if let Some(warning) = warning_indicator {
+        container(
+            column![
+                warning,
+                time_display,
+            ]
+            .spacing(5)
+            .align_items(Alignment::Center)
+        )
         .width(Length::Fill)
-        .height(Length::Fixed(50.0));
+        .height(Length::Fixed(80.0))
+    } else {
+        container(time_display)
+            .width(Length::Fill)
+            .height(Length::Fixed(50.0))
+    };
 
     // Combine all sections with fixed layout
     // Total height: 40 + 220 + 80 + 180 + 30 = 550px (leaving 50px for spacing on 600px display)

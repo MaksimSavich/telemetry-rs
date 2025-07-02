@@ -319,15 +319,20 @@ impl Application for TelemetryGui {
 
         // Create UI elements
         let can_status = can_status_indicator(self.can_connected);
-        let radio_status = radio_status_indicators(
-            self.rfd_connected && self.rfd_enabled,
-        );
+        let radio_status = radio_status_indicators(self.rfd_connected && self.rfd_enabled);
         let mppt_info = mppt_info_box(&self.mppt_data);
         let speed_direction = direction_speed_display(&self.direction, self.speed_mph);
         let battery_info = battery_box(&battery_data);
         let bps_info = bps_box(&bps_data);
         let fault_display = fault_display(&self.active_faults, self.fault_page_index);
         let time_display = time_display(&self.current_time);
+
+        // Create warning indicator for high battery current
+        let warning_indicator = if self.battery_current > 70.0 {
+            Some(battery_current_warning())
+        } else {
+            None
+        };
 
         // Use the layout utility to organize everything
         main_layout(
@@ -340,6 +345,7 @@ impl Application for TelemetryGui {
             bps_info,
             fault_display,
             time_display,
+            warning_indicator,
         )
     }
 
@@ -350,7 +356,7 @@ impl Application for TelemetryGui {
             {
                 let decoder = self.decoder.clone();
                 subscription::unfold("enhanced_can_subscription", decoder, |decoder| async {
-                    let socket = match CanSocket::open("can0") {
+                    let socket = match CanSocket::open("vcan0") {
                         Ok(s) => s,
                         Err(e) => {
                             eprintln!("Failed to open CAN socket: {}", e);
@@ -410,15 +416,15 @@ impl TelemetryGui {
     // UPDATED: Create SerialManager with enhanced batching
     fn create_enhanced_serial_manager(rfd_enabled: bool) -> SerialManager {
         let mut manager = SerialManager::new();
-        
+
         // Configure modem settings
         manager.set_rfd_enabled(rfd_enabled);
-        
+
         // Start background scanning
         if let Err(e) = manager.start_background_scanning() {
             println!("Failed to start background scanning: {}", e);
         }
-        
+
         // Start enhanced batching
         if let Err(e) = manager.start_batching() {
             println!("Failed to start enhanced batching: {}", e);
@@ -428,7 +434,7 @@ impl TelemetryGui {
             println!("  - Synchronization markers enabled");
             println!("  - Error recovery enabled");
         }
-        
+
         manager
     }
 
@@ -439,10 +445,11 @@ impl TelemetryGui {
         // - Intelligent batching with proper synchronization
         // - Error recovery and health monitoring
         // - Rate limiting based on DBC transmission intervals
-        
+
         if let Err(e) = self.serial_manager.send_can_frame(can_id, data) {
             // Only log errors occasionally to prevent console spam
-            if rand::random::<u8>() < 5 { // ~2% of errors
+            if rand::random::<u8>() < 5 {
+                // ~2% of errors
                 eprintln!("CAN frame transmission error: {}", e);
             }
         }
@@ -461,7 +468,7 @@ impl TelemetryGui {
 
         // Monitor batch queue health
         let rfd_queue = self.serial_manager.get_batch_stats();
-        
+
         // Log enhanced statistics periodically for monitoring
         static mut LAST_STATS_LOG: Option<std::time::Instant> = None;
         unsafe {
@@ -470,17 +477,17 @@ impl TelemetryGui {
                 Some(last) => now.duration_since(last).as_secs() >= 30, // Every 30 seconds
                 None => true,
             };
-            
+
             if should_log {
                 if rfd_queue > 0 {
                     println!("📊 Batch queues - RFD: {}", rfd_queue);
                 }
-                
+
                 // Check for queue buildup (potential issue)
                 if rfd_queue > 20 {
                     println!("⚠ Large batch queues detected - possible transmission issues");
                 }
-                
+
                 LAST_STATS_LOG = Some(now);
             }
         }
@@ -723,15 +730,15 @@ impl TelemetryGui {
         self.serial_manager.enable_batching(enabled);
         println!("Batching {}", if enabled { "enabled" } else { "disabled" });
     }
-    
+
     pub fn get_batching_stats(&self) -> usize {
         self.serial_manager.get_batch_stats()
     }
-    
+
     // Get detailed transmission health information
     pub fn get_transmission_health(&self) -> TransmissionHealth {
         let rfd_status = self.serial_manager.rfd_status.lock().unwrap();
-        
+
         TransmissionHealth {
             rfd_connected: rfd_status.connected,
             rfd_failures: rfd_status.consecutive_failures,

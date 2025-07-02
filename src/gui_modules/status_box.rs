@@ -69,3 +69,20 @@ pub fn time_display(current_time: &str) -> Element<'static, Message> {
     .padding(5)
     .into()
 }
+
+pub fn battery_current_warning() -> Element<'static, Message> {
+    container(
+        text("WARNING: HIGH BATTERY CURRENT - SLOW DOWN")
+            .size(16)
+            .horizontal_alignment(iced::alignment::Horizontal::Center),
+    )
+    .padding(8)
+    .width(Length::Fill)
+    .style(iced::theme::Container::Custom(Box::new(|theme: &iced::Theme| {
+        let mut appearance = theme.appearance(&iced::theme::Container::Box);
+        appearance.background = Some(Color::from_rgb(1.0, 1.0, 0.0).into());
+        appearance.text_color = Some(Color::BLACK);
+        appearance
+    })))
+    .into()
+}

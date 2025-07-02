@@ -1,6 +1,6 @@
 // prost import removed - no longer using protobuf
 use serialport::{SerialPort, SerialPortType};
-use std::collections::{VecDeque, HashMap};
+use std::collections::{HashMap, VecDeque};
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -10,11 +10,11 @@ use std::time::{Duration, Instant};
 
 // Enhanced batching configuration with synchronization
 const BATCH_START_MARKER: &[u8] = b"\xAA\xBB\xCC\xDD"; // 4-byte start marker
-const BATCH_END_MARKER: &[u8] = b"\xEE\xFF\x00\x11";   // 4-byte end marker
-const MAX_BATCH_SIZE: usize = 8;           // Smaller batches = better reliability
-const MAX_BATCH_BYTES: usize = 100;       // Conservative byte limit
-const BATCH_TIMEOUT_MS: u64 = 20;         // Longer timeout for stability
-const MIN_BATCH_SIZE: usize = 1;          // Always send at least 1 frame
+const BATCH_END_MARKER: &[u8] = b"\xEE\xFF\x00\x11"; // 4-byte end marker
+const MAX_BATCH_SIZE: usize = 8; // Smaller batches = better reliability
+const MAX_BATCH_BYTES: usize = 100; // Conservative byte limit
+const BATCH_TIMEOUT_MS: u64 = 20; // Longer timeout for stability
+const MIN_BATCH_SIZE: usize = 1; // Always send at least 1 frame
 
 // Radio configuration constants
 const RFD_BAUD_RATE: u32 = 57600;
@@ -48,11 +48,11 @@ impl CanFrameData {
     pub fn to_bytes(&self) -> Vec<u8> {
         // Validate data length (CAN max is 8 bytes)
         let data_len = std::cmp::min(self.data.len(), 8);
-        
+
         let mut bytes = Vec::with_capacity(5 + data_len);
-        bytes.extend_from_slice(&self.id.to_be_bytes());    // 4 bytes ID (big-endian)
-        bytes.push(data_len as u8);                         // 1 byte length
-        bytes.extend_from_slice(&self.data[..data_len]);    // data (validated length)
+        bytes.extend_from_slice(&self.id.to_be_bytes()); // 4 bytes ID (big-endian)
+        bytes.push(data_len as u8); // 1 byte length
+        bytes.extend_from_slice(&self.data[..data_len]); // data (validated length)
         bytes
     }
 
@@ -91,38 +91,70 @@ impl FrameFilter {
             last_transmission: HashMap::new(),
             min_intervals: HashMap::new(),
         };
-        
+
         // Set minimum transmission intervals to reduce spam
-        filter.min_intervals.insert(0x300, Duration::from_millis(100));  // DTC flags - max 10 Hz
-        filter.min_intervals.insert(0x320, Duration::from_millis(50));   // BMS Power - max 20 Hz
-        filter.min_intervals.insert(0x360, Duration::from_millis(50));   // BMS Temp - max 20 Hz
-        filter.min_intervals.insert(0x310, Duration::from_millis(2000)); // BMS Limits - max 0.5 Hz
-        filter.min_intervals.insert(0x330, Duration::from_millis(1000)); // BMS State - max 1 Hz
-        filter.min_intervals.insert(0x340, Duration::from_millis(1000)); // BMS Capacity - max 1 Hz
-        
+        filter
+            .min_intervals
+            .insert(0x300, Duration::from_millis(100)); // DTC flags - max 10 Hz
+        filter
+            .min_intervals
+            .insert(0x320, Duration::from_millis(50)); // BMS Power - max 20 Hz
+        filter
+            .min_intervals
+            .insert(0x360, Duration::from_millis(50)); // BMS Temp - max 20 Hz
+        filter
+            .min_intervals
+            .insert(0x310, Duration::from_millis(2000)); // BMS Limits - max 0.5 Hz
+        filter
+            .min_intervals
+            .insert(0x330, Duration::from_millis(1000)); // BMS State - max 1 Hz
+        filter
+            .min_intervals
+            .insert(0x340, Duration::from_millis(1000)); // BMS Capacity - max 1 Hz
+
         // Motor controllers - respect their 50ms intervals from DBC
-        filter.min_intervals.insert(0x0CF11E05, Duration::from_millis(50));
-        filter.min_intervals.insert(0x0CF11F05, Duration::from_millis(50));
-        filter.min_intervals.insert(0x0CF11E06, Duration::from_millis(50));
-        filter.min_intervals.insert(0x0CF11F06, Duration::from_millis(50));
-        
+        filter
+            .min_intervals
+            .insert(0x0CF11E05, Duration::from_millis(50));
+        filter
+            .min_intervals
+            .insert(0x0CF11F05, Duration::from_millis(50));
+        filter
+            .min_intervals
+            .insert(0x0CF11E06, Duration::from_millis(50));
+        filter
+            .min_intervals
+            .insert(0x0CF11F06, Duration::from_millis(50));
+
         // MPPT - 500ms and 1000ms from DBC
-        filter.min_intervals.insert(0x200, Duration::from_millis(500));
-        filter.min_intervals.insert(0x201, Duration::from_millis(1000));
-        filter.min_intervals.insert(0x202, Duration::from_millis(500));
-        filter.min_intervals.insert(0x203, Duration::from_millis(1000));
-        
+        filter
+            .min_intervals
+            .insert(0x200, Duration::from_millis(500));
+        filter
+            .min_intervals
+            .insert(0x201, Duration::from_millis(1000));
+        filter
+            .min_intervals
+            .insert(0x202, Duration::from_millis(500));
+        filter
+            .min_intervals
+            .insert(0x203, Duration::from_millis(1000));
+
         // BPS - 100ms from DBC
-        filter.min_intervals.insert(0x776, Duration::from_millis(100));
-        filter.min_intervals.insert(0x777, Duration::from_millis(100));
-        
+        filter
+            .min_intervals
+            .insert(0x776, Duration::from_millis(100));
+        filter
+            .min_intervals
+            .insert(0x777, Duration::from_millis(100));
+
         filter
     }
-    
+
     pub fn should_transmit(&mut self, frame: &CanFrameData) -> bool {
         let now = Instant::now();
         let can_id = frame.id;
-        
+
         // Check if we have a minimum interval for this message
         if let Some(min_interval) = self.min_intervals.get(&can_id) {
             if let Some(last_time) = self.last_transmission.get(&can_id) {
@@ -139,7 +171,7 @@ impl FrameFilter {
                 }
             }
         }
-        
+
         // Update last transmission time
         self.last_transmission.insert(can_id, now);
         true
@@ -172,13 +204,12 @@ impl ImprovedFrameBatcher {
         }
 
         let frame_size = 5 + std::cmp::min(frame.data.len(), 8);
-        
+
         // Check batch limits
-        if self.frames.len() >= MAX_BATCH_SIZE || 
-           self.total_bytes + frame_size > MAX_BATCH_BYTES {
+        if self.frames.len() >= MAX_BATCH_SIZE || self.total_bytes + frame_size > MAX_BATCH_BYTES {
             return false; // Batch is full
         }
-        
+
         self.total_bytes += frame_size;
         self.frames.push_back(frame);
         true
@@ -188,12 +219,12 @@ impl ImprovedFrameBatcher {
         if self.frames.is_empty() {
             return false;
         }
-        
+
         // Send conditions
-        self.frames.len() >= MAX_BATCH_SIZE ||
-        self.total_bytes >= MAX_BATCH_BYTES ||
-        (self.frames.len() >= MIN_BATCH_SIZE && 
-         self.last_send.elapsed().as_millis() >= BATCH_TIMEOUT_MS as u128)
+        self.frames.len() >= MAX_BATCH_SIZE
+            || self.total_bytes >= MAX_BATCH_BYTES
+            || (self.frames.len() >= MIN_BATCH_SIZE
+                && self.last_send.elapsed().as_millis() >= BATCH_TIMEOUT_MS as u128)
     }
 
     pub fn create_batch(&mut self) -> Vec<u8> {
@@ -202,58 +233,64 @@ impl ImprovedFrameBatcher {
         }
 
         let mut batch = Vec::new();
-        
+
         // Add start marker for synchronization
         batch.extend_from_slice(BATCH_START_MARKER);
-        
+
         // Add frame count (2 bytes, big-endian)
         let frame_count = std::cmp::min(self.frames.len(), MAX_BATCH_SIZE);
         batch.extend_from_slice(&(frame_count as u16).to_be_bytes());
-        
+
         // Add frames
         let mut actual_count = 0;
         let batch_data_start = batch.len();
-        
+
         while let Some(frame) = self.frames.pop_front() {
             if actual_count >= frame_count {
                 // Put frame back if we exceeded count
                 self.frames.push_front(frame);
                 break;
             }
-            
+
             let frame_bytes = frame.to_bytes();
             batch.extend_from_slice(&frame_bytes);
             actual_count += 1;
         }
-        
+
         // Update frame count if different
         if actual_count != frame_count {
             let count_bytes = &(actual_count as u16).to_be_bytes();
             batch[4] = count_bytes[0];
             batch[5] = count_bytes[1];
         }
-        
+
         // Add end marker for synchronization
         batch.extend_from_slice(BATCH_END_MARKER);
-        
+
         // Calculate checksum for integrity (exclude start marker)
         let checksum_data = &batch[4..batch.len()]; // From frame count to end marker
-        let checksum = checksum_data.iter().fold(0u16, |acc, &b| acc.wrapping_add(b as u16));
+        let checksum = checksum_data
+            .iter()
+            .fold(0u16, |acc, &b| acc.wrapping_add(b as u16));
         batch.extend_from_slice(&checksum.to_be_bytes());
-        
+
         self.total_bytes = 0;
         self.last_send = Instant::now();
         self.batch_count += 1;
-        
-        println!("Created batch #{}: {} frames, {} bytes total", 
-                self.batch_count, actual_count, batch.len());
+
+        println!(
+            "Created batch #{}: {} frames, {} bytes total",
+            self.batch_count,
+            actual_count,
+            batch.len()
+        );
         batch
     }
 
     pub fn is_empty(&self) -> bool {
         self.frames.is_empty()
     }
-    
+
     pub fn get_queue_size(&self) -> usize {
         self.frames.len()
     }
@@ -394,7 +431,6 @@ impl SerialManager {
         Self::send_rfd_batch_improved(&self.rfd_connection, &self.rfd_status, &batch_data);
     }
 
-
     // Enhanced RFD batch sending with proper framing and error handling
     fn send_rfd_batch_improved(
         connection: &Arc<Mutex<ModemConnection>>,
@@ -440,7 +476,6 @@ impl SerialManager {
         }
     }
 
-
     fn update_transmission_status_static(status_arc: &Arc<Mutex<ModemStatus>>, success: bool) {
         if let Ok(mut status) = status_arc.try_lock() {
             status.last_transmission_attempt = Some(Instant::now());
@@ -477,7 +512,6 @@ impl SerialManager {
             Err("No modems available for transmission".to_string())
         }
     }
-
 
     // Fast RFD transmission (individual frames)
     fn send_can_frame_rfd_fast(&self, can_id: u32, data: &[u8]) -> Result<(), String> {
@@ -742,9 +776,9 @@ impl SerialManager {
         let batch_thread = thread::spawn(move || {
             let mut last_stats = Instant::now();
             let mut rfd_batch_count = 0u64;
-            
+
             println!("Enhanced batch thread started");
-            
+
             loop {
                 if !*batching_enabled.lock().unwrap() {
                     break;
@@ -766,7 +800,11 @@ impl SerialManager {
                         };
 
                         if !batch_data.is_empty() {
-                            Self::send_rfd_batch_improved(&rfd_connection, &rfd_status, &batch_data);
+                            Self::send_rfd_batch_improved(
+                                &rfd_connection,
+                                &rfd_status,
+                                &batch_data,
+                            );
                             sent_batch = true;
                             rfd_batch_count += 1;
                         }
@@ -776,9 +814,11 @@ impl SerialManager {
                 // Print stats every 10 seconds
                 if last_stats.elapsed().as_secs() >= 10 {
                     let rfd_queue = rfd_batcher.lock().unwrap().get_queue_size();
-                    
-                    println!("Batch stats (10s): RFD: {} batches ({} queued)", 
-                            rfd_batch_count, rfd_queue);
+
+                    println!(
+                        "Batch stats (10s): RFD: {} batches ({} queued)",
+                        rfd_batch_count, rfd_queue
+                    );
                     rfd_batch_count = 0;
                     last_stats = Instant::now();
                 }
@@ -790,7 +830,7 @@ impl SerialManager {
                     thread::sleep(Duration::from_millis(5)); // Longer sleep when idle
                 }
             }
-            
+
             println!("Enhanced batch thread stopped");
         });
 
@@ -893,11 +933,11 @@ mod tests {
         assert!(batcher.add_frame(frame2));
 
         let batch = batcher.create_batch();
-        
+
         // Verify batch structure
         assert!(batch.len() > 10); // Should have markers, count, frames, checksum
         assert_eq!(&batch[0..4], BATCH_START_MARKER);
-        
+
         let parsed_frames = parse_can_batch(&batch);
         assert_eq!(parsed_frames.len(), 2);
         assert_eq!(parsed_frames[0].id, 0x100);
@@ -907,15 +947,14 @@ mod tests {
     #[test]
     fn test_frame_filtering() {
         let mut filter = FrameFilter::new();
-        
+
         // Test rapid messages get filtered
         let frame = CanFrameData::new(0x300, &[0x40, 0x00, 0x04, 0x00]);
-        
+
         assert!(filter.should_transmit(&frame)); // First message allowed
         assert!(!filter.should_transmit(&frame)); // Second message too soon, filtered
-        
+
         // Wait for interval to pass (would need to mock time in real test)
         // assert!(filter.should_transmit(&frame)); // After interval, allowed again
     }
 }
-
