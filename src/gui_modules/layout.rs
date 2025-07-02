@@ -51,12 +51,6 @@ pub fn main_layout<'a>(
     .height(Length::Fixed(220.0)) // Fixed height for consistency
     .padding([5, 10]);
 
-    // BPS info row with fixed height
-    let bps_row = container(bps_info)
-        .width(Length::Fill)
-        .height(Length::Fixed(100.0))
-        .padding([0, 10]);
-
     // Fault display row with fixed container height
     // The fault panel inside can scroll, but the container stays the same size
     let fault_row = container(fault_display)
@@ -84,7 +78,6 @@ pub fn main_layout<'a>(
     column![
         top_row,
         main_info_row,
-        bps_row,
         fault_row,
         Space::with_height(Length::Fill), // This will absorb any extra space
         bottom_row,

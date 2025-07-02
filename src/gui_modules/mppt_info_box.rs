@@ -32,11 +32,11 @@ impl Default for MpptData {
 pub fn mppt_info_box(data: &MpptData) -> Element<'static, Message> {
     container(
         column![
-            text("MPPT Info").size(18),
+            text("MPPT & BPS Info").size(18),
             row![
                 // MPPT 1 Column
                 column![
-                    text("MPPT 1").size(16),
+                    text("MPPT Back").size(16),
                     text(format!(
                         "In: {:.1}V / {:.1}A",
                         data.mppt1_input_voltage, data.mppt1_input_current
@@ -53,7 +53,7 @@ pub fn mppt_info_box(data: &MpptData) -> Element<'static, Message> {
                 .width(Length::FillPortion(1)),
                 // MPPT 2 Column
                 column![
-                    text("MPPT 2").size(16),
+                    text("MPPT Front").size(16),
                     text(format!(
                         "In: {:.1}V / {:.1}A",
                         data.mppt2_input_voltage, data.mppt2_input_current
@@ -68,6 +68,13 @@ pub fn mppt_info_box(data: &MpptData) -> Element<'static, Message> {
                 .spacing(4)
                 .align_items(Alignment::Start)
                 .width(Length::FillPortion(1)),
+                column![
+                    text("BPS Info").size(20),
+                    text(format!("Time On: {:.1} Seconds", data.ontime)),
+                    text(format!("BPS State: {}", data.state)),
+                ]
+                .spacing(5)
+                .align_items(Alignment::Start),
             ]
             .spacing(10)
         ]
