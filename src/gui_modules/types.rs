@@ -46,18 +46,18 @@ pub const DTC_FLAGS_1_FAULTS: &[(u16, &str)] = &[
 
 pub const DTC_FLAGS_2_FAULTS: &[(u16, &str)] = &[
     (0x0001, "Internal Communication"),
-    (0x0002, "Cell Balancing Stuck Off"),
-    (0x0004, "Weak Cell"),
+    (0x0002, "W: Cell Balancing Stuck Off"),
+    (0x0004, "W: Weak Cell"),
     (0x0008, "Low Cell Voltage"),
     (0x0010, "Open Wiring"),
     (0x0020, "Current Sensor"),
     (0x0040, "Highest Cell Voltage Over 5V"),
     (0x0080, "Cell ASIC"),
-    (0x0100, "Weak Pack"),
-    (0x0200, "Fan Monitor"),
+    (0x0100, "W: Weak Pack"),
+    (0x0200, "W: Fan Monitor"),
     (0x0400, "Thermistor"),
     (0x0800, "External Communication"),
-    (0x1000, "Redundant Power Supply"),
+    (0x1000, "W: Redundant Power Supply"),
     (0x2000, "High Voltage Isolation"),
     (0x4000, "Input Power Supply"),
     (0x8000, "Charge Limit Enforcement"),
@@ -144,14 +144,38 @@ pub fn get_gui_value_mappings() -> HashMap<(&'static str, &'static str), Vec<Gui
     mappings.insert(("BPS_Thing", "BPS_State"), vec![GuiValueType::BpsState]);
 
     // MPPT data - assuming MPPT message structure
-    mappings.insert(("MPPT", "MPPT1_Input_Voltage"), vec![GuiValueType::Mppt1InputVoltage]);
-    mappings.insert(("MPPT", "MPPT1_Input_Current"), vec![GuiValueType::Mppt1InputCurrent]);
-    mappings.insert(("MPPT", "MPPT1_Output_Voltage"), vec![GuiValueType::Mppt1OutputVoltage]);
-    mappings.insert(("MPPT", "MPPT1_Output_Current"), vec![GuiValueType::Mppt1OutputCurrent]);
-    mappings.insert(("MPPT", "MPPT2_Input_Voltage"), vec![GuiValueType::Mppt2InputVoltage]);
-    mappings.insert(("MPPT", "MPPT2_Input_Current"), vec![GuiValueType::Mppt2InputCurrent]);
-    mappings.insert(("MPPT", "MPPT2_Output_Voltage"), vec![GuiValueType::Mppt2OutputVoltage]);
-    mappings.insert(("MPPT", "MPPT2_Output_Current"), vec![GuiValueType::Mppt2OutputCurrent]);
+    mappings.insert(
+        ("MPPT", "MPPT1_Input_Voltage"),
+        vec![GuiValueType::Mppt1InputVoltage],
+    );
+    mappings.insert(
+        ("MPPT", "MPPT1_Input_Current"),
+        vec![GuiValueType::Mppt1InputCurrent],
+    );
+    mappings.insert(
+        ("MPPT", "MPPT1_Output_Voltage"),
+        vec![GuiValueType::Mppt1OutputVoltage],
+    );
+    mappings.insert(
+        ("MPPT", "MPPT1_Output_Current"),
+        vec![GuiValueType::Mppt1OutputCurrent],
+    );
+    mappings.insert(
+        ("MPPT", "MPPT2_Input_Voltage"),
+        vec![GuiValueType::Mppt2InputVoltage],
+    );
+    mappings.insert(
+        ("MPPT", "MPPT2_Input_Current"),
+        vec![GuiValueType::Mppt2InputCurrent],
+    );
+    mappings.insert(
+        ("MPPT", "MPPT2_Output_Voltage"),
+        vec![GuiValueType::Mppt2OutputVoltage],
+    );
+    mappings.insert(
+        ("MPPT", "MPPT2_Output_Current"),
+        vec![GuiValueType::Mppt2OutputCurrent],
+    );
 
     mappings
 }

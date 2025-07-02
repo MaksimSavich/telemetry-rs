@@ -1,6 +1,6 @@
 use prost::Message;
 use serialport::{SerialPort, SerialPortType};
-use std::collections::VecDeque;
+use std::collections::{VecDeque, HashMap};
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -8,13 +8,15 @@ use std::time::{Duration, Instant};
 
 use crate::proto::{Packet, PacketType, Transmission};
 
-// Batching configuration
-const MAX_BATCH_SIZE: usize = 32; // Max CAN frames per batch
-const MAX_BATCH_BYTES: usize = 200; // Max bytes per batch (within radio limits)
-const BATCH_TIMEOUT_MS: u64 = 10; // Force send batch after 10ms
-const SINGLE_CAN_FRAME_SIZE: usize = 12; // 4 bytes ID + 8 bytes max data
+// Enhanced batching configuration with synchronization
+const BATCH_START_MARKER: &[u8] = b"\xAA\xBB\xCC\xDD"; // 4-byte start marker
+const BATCH_END_MARKER: &[u8] = b"\xEE\xFF\x00\x11";   // 4-byte end marker
+const MAX_BATCH_SIZE: usize = 8;           // Smaller batches = better reliability
+const MAX_BATCH_BYTES: usize = 100;       // Conservative byte limit
+const BATCH_TIMEOUT_MS: u64 = 20;         // Longer timeout for stability
+const MIN_BATCH_SIZE: usize = 1;          // Always send at least 1 frame
 
-// Frame delimiters
+// Frame delimiters for LoRa
 const START_DELIMITER: &[u8] = b"<START>";
 const END_DELIMITER: &[u8] = b"<END>";
 
@@ -22,7 +24,7 @@ const END_DELIMITER: &[u8] = b"<END>";
 const RFD_BAUD_RATE: u32 = 57600;
 const LORA_BAUD_RATE: u32 = 115200;
 const CONNECTION_CHECK_INTERVAL_MS: u64 = 10000;
-const TRANSMISSION_TIMEOUT_MS: u64 = 50; // Increased for batch transmissions
+const TRANSMISSION_TIMEOUT_MS: u64 = 100;
 const CONNECTION_GRACE_PERIOD_MS: u64 = 30000;
 const RFD_SCAN_INTERVAL_MS: u64 = 5000;
 const LORA_SCAN_INTERVAL_MS: u64 = 5000;
@@ -49,12 +51,15 @@ impl CanFrameData {
         }
     }
 
-    // Serialize to bytes: [ID(4)] + [LEN(1)] + [DATA(0-8)]
+    // Enhanced serialization with validation
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::with_capacity(5 + self.data.len());
-        bytes.extend_from_slice(&self.id.to_be_bytes()); // 4 bytes ID
-        bytes.push(self.data.len() as u8); // 1 byte length
-        bytes.extend_from_slice(&self.data); // 0-8 bytes data
+        // Validate data length (CAN max is 8 bytes)
+        let data_len = std::cmp::min(self.data.len(), 8);
+        
+        let mut bytes = Vec::with_capacity(5 + data_len);
+        bytes.extend_from_slice(&self.id.to_be_bytes());    // 4 bytes ID (big-endian)
+        bytes.push(data_len as u8);                         // 1 byte length
+        bytes.extend_from_slice(&self.data[..data_len]);    // data (validated length)
         bytes
     }
 
@@ -81,29 +86,106 @@ impl CanFrameData {
     }
 }
 
-pub struct FrameBatcher {
+// Enhanced frame filtering to reduce message spam
+pub struct FrameFilter {
+    last_transmission: HashMap<u32, Instant>,
+    min_intervals: HashMap<u32, Duration>,
+}
+
+impl FrameFilter {
+    pub fn new() -> Self {
+        let mut filter = Self {
+            last_transmission: HashMap::new(),
+            min_intervals: HashMap::new(),
+        };
+        
+        // Set minimum transmission intervals to reduce spam
+        filter.min_intervals.insert(0x300, Duration::from_millis(100));  // DTC flags - max 10 Hz
+        filter.min_intervals.insert(0x320, Duration::from_millis(50));   // BMS Power - max 20 Hz
+        filter.min_intervals.insert(0x360, Duration::from_millis(50));   // BMS Temp - max 20 Hz
+        filter.min_intervals.insert(0x310, Duration::from_millis(2000)); // BMS Limits - max 0.5 Hz
+        filter.min_intervals.insert(0x330, Duration::from_millis(1000)); // BMS State - max 1 Hz
+        filter.min_intervals.insert(0x340, Duration::from_millis(1000)); // BMS Capacity - max 1 Hz
+        
+        // Motor controllers - respect their 50ms intervals from DBC
+        filter.min_intervals.insert(0x0CF11E05, Duration::from_millis(50));
+        filter.min_intervals.insert(0x0CF11F05, Duration::from_millis(50));
+        filter.min_intervals.insert(0x0CF11E06, Duration::from_millis(50));
+        filter.min_intervals.insert(0x0CF11F06, Duration::from_millis(50));
+        
+        // MPPT - 500ms and 1000ms from DBC
+        filter.min_intervals.insert(0x200, Duration::from_millis(500));
+        filter.min_intervals.insert(0x201, Duration::from_millis(1000));
+        filter.min_intervals.insert(0x202, Duration::from_millis(500));
+        filter.min_intervals.insert(0x203, Duration::from_millis(1000));
+        
+        // BPS - 100ms from DBC
+        filter.min_intervals.insert(0x776, Duration::from_millis(100));
+        filter.min_intervals.insert(0x777, Duration::from_millis(100));
+        
+        filter
+    }
+    
+    pub fn should_transmit(&mut self, frame: &CanFrameData) -> bool {
+        let now = Instant::now();
+        let can_id = frame.id;
+        
+        // Check if we have a minimum interval for this message
+        if let Some(min_interval) = self.min_intervals.get(&can_id) {
+            if let Some(last_time) = self.last_transmission.get(&can_id) {
+                if now.duration_since(*last_time) < *min_interval {
+                    return false; // Too soon, filter out
+                }
+            }
+        } else {
+            // Default minimum interval for unknown messages
+            let default_interval = Duration::from_millis(10);
+            if let Some(last_time) = self.last_transmission.get(&can_id) {
+                if now.duration_since(*last_time) < default_interval {
+                    return false;
+                }
+            }
+        }
+        
+        // Update last transmission time
+        self.last_transmission.insert(can_id, now);
+        true
+    }
+}
+
+pub struct ImprovedFrameBatcher {
     frames: VecDeque<CanFrameData>,
     last_send: Instant,
     total_bytes: usize,
+    frame_filter: FrameFilter,
+    batch_count: u64,
 }
 
-impl FrameBatcher {
+impl ImprovedFrameBatcher {
     pub fn new() -> Self {
         Self {
             frames: VecDeque::new(),
             last_send: Instant::now(),
             total_bytes: 0,
+            frame_filter: FrameFilter::new(),
+            batch_count: 0,
         }
     }
 
     pub fn add_frame(&mut self, frame: CanFrameData) -> bool {
-        let frame_size = 5 + frame.data.len(); // ID(4) + LEN(1) + DATA
-
-        // Check if adding this frame would exceed limits
-        if self.frames.len() >= MAX_BATCH_SIZE || self.total_bytes + frame_size > MAX_BATCH_BYTES {
-            return false; // Batch is full
+        // Apply filtering to reduce spam
+        if !self.frame_filter.should_transmit(&frame) {
+            return true; // Frame filtered out, but don't report as error
         }
 
+        let frame_size = 5 + std::cmp::min(frame.data.len(), 8);
+        
+        // Check batch limits
+        if self.frames.len() >= MAX_BATCH_SIZE || 
+           self.total_bytes + frame_size > MAX_BATCH_BYTES {
+            return false; // Batch is full
+        }
+        
         self.total_bytes += frame_size;
         self.frames.push_back(frame);
         true
@@ -113,31 +195,74 @@ impl FrameBatcher {
         if self.frames.is_empty() {
             return false;
         }
-
-        // Send if batch is full or timeout reached
-        self.frames.len() >= MAX_BATCH_SIZE
-            || self.total_bytes >= MAX_BATCH_BYTES
-            || self.last_send.elapsed().as_millis() >= BATCH_TIMEOUT_MS as u128
+        
+        // Send conditions
+        self.frames.len() >= MAX_BATCH_SIZE ||
+        self.total_bytes >= MAX_BATCH_BYTES ||
+        (self.frames.len() >= MIN_BATCH_SIZE && 
+         self.last_send.elapsed().as_millis() >= BATCH_TIMEOUT_MS as u128)
     }
 
     pub fn create_batch(&mut self) -> Vec<u8> {
-        let mut batch = Vec::new();
-
-        // Add frame count header (2 bytes for up to 65535 frames)
-        batch.extend_from_slice(&(self.frames.len() as u16).to_be_bytes());
-
-        // Add all frames
-        while let Some(frame) = self.frames.pop_front() {
-            batch.extend_from_slice(&frame.to_bytes());
+        if self.frames.is_empty() {
+            return Vec::new();
         }
 
+        let mut batch = Vec::new();
+        
+        // Add start marker for synchronization
+        batch.extend_from_slice(BATCH_START_MARKER);
+        
+        // Add frame count (2 bytes, big-endian)
+        let frame_count = std::cmp::min(self.frames.len(), MAX_BATCH_SIZE);
+        batch.extend_from_slice(&(frame_count as u16).to_be_bytes());
+        
+        // Add frames
+        let mut actual_count = 0;
+        let batch_data_start = batch.len();
+        
+        while let Some(frame) = self.frames.pop_front() {
+            if actual_count >= frame_count {
+                // Put frame back if we exceeded count
+                self.frames.push_front(frame);
+                break;
+            }
+            
+            let frame_bytes = frame.to_bytes();
+            batch.extend_from_slice(&frame_bytes);
+            actual_count += 1;
+        }
+        
+        // Update frame count if different
+        if actual_count != frame_count {
+            let count_bytes = &(actual_count as u16).to_be_bytes();
+            batch[4] = count_bytes[0];
+            batch[5] = count_bytes[1];
+        }
+        
+        // Add end marker for synchronization
+        batch.extend_from_slice(BATCH_END_MARKER);
+        
+        // Calculate checksum for integrity (exclude start marker)
+        let checksum_data = &batch[4..batch.len()]; // From frame count to end marker
+        let checksum = checksum_data.iter().fold(0u16, |acc, &b| acc.wrapping_add(b as u16));
+        batch.extend_from_slice(&checksum.to_be_bytes());
+        
         self.total_bytes = 0;
         self.last_send = Instant::now();
+        self.batch_count += 1;
+        
+        println!("Created batch #{}: {} frames, {} bytes total", 
+                self.batch_count, actual_count, batch.len());
         batch
     }
 
     pub fn is_empty(&self) -> bool {
         self.frames.is_empty()
+    }
+    
+    pub fn get_queue_size(&self) -> usize {
+        self.frames.len()
     }
 }
 
@@ -180,9 +305,9 @@ pub struct SerialManager {
     lora_enabled: Arc<Mutex<bool>>,
     rfd_enabled: Arc<Mutex<bool>>,
 
-    // New batching fields
-    rfd_batcher: Arc<Mutex<FrameBatcher>>,
-    lora_batcher: Arc<Mutex<FrameBatcher>>,
+    // Enhanced batching fields
+    rfd_batcher: Arc<Mutex<ImprovedFrameBatcher>>,
+    lora_batcher: Arc<Mutex<ImprovedFrameBatcher>>,
     batch_thread: Option<JoinHandle<()>>,
     batching_enabled: Arc<Mutex<bool>>,
 }
@@ -201,7 +326,7 @@ impl SerialManager {
             last_health_check: Instant::now(),
         }));
 
-        let instance = Self {
+        Self {
             lora_connection,
             rfd_connection,
             lora_status: Arc::new(Mutex::new(ModemStatus::new())),
@@ -210,13 +335,11 @@ impl SerialManager {
             scan_running: Arc::new(Mutex::new(false)),
             lora_enabled: Arc::new(Mutex::new(false)), // Default to disabled
             rfd_enabled: Arc::new(Mutex::new(true)),
-            rfd_batcher: Arc::new(Mutex::new(FrameBatcher::new())),
-            lora_batcher: Arc::new(Mutex::new(FrameBatcher::new())),
+            rfd_batcher: Arc::new(Mutex::new(ImprovedFrameBatcher::new())),
+            lora_batcher: Arc::new(Mutex::new(ImprovedFrameBatcher::new())),
             batch_thread: None,
             batching_enabled: Arc::new(Mutex::new(true)),
-        };
-
-        instance
+        }
     }
 
     // Enable/disable modems
@@ -545,7 +668,7 @@ impl SerialManager {
         Ok(())
     }
 
-    // Start the batching thread
+    // Enhanced batch thread with better error handling and statistics
     pub fn start_batching(&mut self) -> Result<(), String> {
         if self.batch_thread.is_some() {
             return Ok(()); // Already running
@@ -562,13 +685,21 @@ impl SerialManager {
         let lora_enabled = Arc::clone(&self.lora_enabled);
 
         let batch_thread = thread::spawn(move || {
+            let mut last_stats = Instant::now();
+            let mut rfd_batch_count = 0u64;
+            let mut lora_batch_count = 0u64;
+            
+            println!("Enhanced batch thread started");
+            
             loop {
                 if !*batching_enabled.lock().unwrap() {
                     break;
                 }
 
+                let mut sent_batch = false;
+
                 // Check RFD batching
-                if *rfd_enabled.lock().unwrap() {
+                if *rfd_enabled.lock().unwrap() && rfd_status.lock().unwrap().connected {
                     let should_send = {
                         let batcher = rfd_batcher.lock().unwrap();
                         batcher.should_send()
@@ -580,12 +711,16 @@ impl SerialManager {
                             batcher.create_batch()
                         };
 
-                        Self::send_rfd_batch(&rfd_connection, &rfd_status, &batch_data);
+                        if !batch_data.is_empty() {
+                            Self::send_rfd_batch_improved(&rfd_connection, &rfd_status, &batch_data);
+                            sent_batch = true;
+                            rfd_batch_count += 1;
+                        }
                     }
                 }
 
                 // Check LoRa batching
-                if *lora_enabled.lock().unwrap() {
+                if *lora_enabled.lock().unwrap() && lora_status.lock().unwrap().connected {
                     let should_send = {
                         let batcher = lora_batcher.lock().unwrap();
                         batcher.should_send()
@@ -597,20 +732,42 @@ impl SerialManager {
                             batcher.create_batch()
                         };
 
-                        Self::send_lora_batch(&lora_connection, &lora_status, &batch_data);
+                        if !batch_data.is_empty() {
+                            Self::send_lora_batch_improved(&lora_connection, &lora_status, &batch_data);
+                            sent_batch = true;
+                            lora_batch_count += 1;
+                        }
                     }
                 }
 
-                // Small sleep to prevent busy waiting
-                thread::sleep(Duration::from_millis(1));
+                // Print stats every 10 seconds
+                if last_stats.elapsed().as_secs() >= 10 {
+                    let rfd_queue = rfd_batcher.lock().unwrap().get_queue_size();
+                    let lora_queue = lora_batcher.lock().unwrap().get_queue_size();
+                    
+                    println!("Batch stats (10s): RFD: {} batches ({} queued), LoRa: {} batches ({} queued)", 
+                            rfd_batch_count, rfd_queue, lora_batch_count, lora_queue);
+                    rfd_batch_count = 0;
+                    lora_batch_count = 0;
+                    last_stats = Instant::now();
+                }
+
+                // Sleep based on whether we sent a batch
+                if sent_batch {
+                    thread::sleep(Duration::from_millis(1)); // Quick check after sending
+                } else {
+                    thread::sleep(Duration::from_millis(5)); // Longer sleep when idle
+                }
             }
+            
+            println!("Enhanced batch thread stopped");
         });
 
         self.batch_thread = Some(batch_thread);
         Ok(())
     }
 
-    // New optimized CAN frame sending with batching
+    // Optimized CAN frame sending with enhanced batching
     pub fn send_can_frame(&self, can_id: u32, data: &[u8]) -> Result<(), String> {
         let frame = CanFrameData::new(can_id, data);
         let lora_enabled = self.is_lora_enabled();
@@ -679,7 +836,7 @@ impl SerialManager {
             batcher.create_batch()
         };
 
-        Self::send_rfd_batch(&self.rfd_connection, &self.rfd_status, &batch_data);
+        Self::send_rfd_batch_improved(&self.rfd_connection, &self.rfd_status, &batch_data);
     }
 
     fn force_send_lora_batch(&self) {
@@ -691,39 +848,64 @@ impl SerialManager {
             batcher.create_batch()
         };
 
-        Self::send_lora_batch(&self.lora_connection, &self.lora_status, &batch_data);
+        Self::send_lora_batch_improved(&self.lora_connection, &self.lora_status, &batch_data);
     }
 
-    fn send_rfd_batch(
+    // Enhanced RFD batch sending with proper framing and error handling
+    fn send_rfd_batch_improved(
         connection: &Arc<Mutex<ModemConnection>>,
         status: &Arc<Mutex<ModemStatus>>,
         batch_data: &[u8],
     ) {
+        if batch_data.is_empty() {
+            return;
+        }
+
         let mut conn = match connection.try_lock() {
             Ok(guard) => guard,
-            Err(_) => return, // Port busy
+            Err(_) => {
+                println!("RFD port busy, skipping batch");
+                return;
+            }
         };
 
         if let Some(port) = conn.port.as_mut() {
+            // Set timeout for transmission
             let _ = port.set_timeout(Duration::from_millis(TRANSMISSION_TIMEOUT_MS));
 
+            // Send batch as-is (already has markers and checksum)
             match port.write_all(batch_data) {
                 Ok(_) => {
-                    let _ = port.flush();
-                    Self::update_transmission_status_static(status, true);
+                    if let Err(e) = port.flush() {
+                        println!("RFD flush error: {}", e);
+                        Self::update_transmission_status_static(status, false);
+                    } else {
+                        // Uncomment for detailed logging:
+                        // println!("RFD batch sent: {} bytes", batch_data.len());
+                        Self::update_transmission_status_static(status, true);
+                    }
                 }
-                Err(_) => {
+                Err(e) => {
+                    println!("RFD write error: {}", e);
                     Self::update_transmission_status_static(status, false);
                 }
             }
+        } else {
+            println!("RFD port not available");
+            Self::update_transmission_status_static(status, false);
         }
     }
 
-    fn send_lora_batch(
+    // Enhanced LoRa batch sending with protobuf wrapper
+    fn send_lora_batch_improved(
         connection: &Arc<Mutex<ModemConnection>>,
         status: &Arc<Mutex<ModemStatus>>,
         batch_data: &[u8],
     ) {
+        if batch_data.is_empty() {
+            return;
+        }
+
         // Create protobuf transmission with batch data
         let transmission = Transmission {
             payload: batch_data.to_vec(),
@@ -740,20 +922,25 @@ impl SerialManager {
 
         let mut encoded = Vec::new();
         if packet.encode(&mut encoded).is_err() {
+            println!("LoRa encoding error");
             Self::update_transmission_status_static(status, false);
             return;
         }
 
         // Frame with delimiters
-        let mut framed_data =
-            Vec::with_capacity(START_DELIMITER.len() + encoded.len() + END_DELIMITER.len());
+        let mut framed_data = Vec::with_capacity(
+            START_DELIMITER.len() + encoded.len() + END_DELIMITER.len()
+        );
         framed_data.extend_from_slice(START_DELIMITER);
         framed_data.extend_from_slice(&encoded);
         framed_data.extend_from_slice(END_DELIMITER);
 
         let mut conn = match connection.try_lock() {
             Ok(guard) => guard,
-            Err(_) => return, // Port busy
+            Err(_) => {
+                println!("LoRa port busy, skipping batch");
+                return;
+            }
         };
 
         if let Some(port) = conn.port.as_mut() {
@@ -761,13 +948,23 @@ impl SerialManager {
 
             match port.write_all(&framed_data) {
                 Ok(_) => {
-                    let _ = port.flush();
-                    Self::update_transmission_status_static(status, true);
+                    if let Err(e) = port.flush() {
+                        println!("LoRa flush error: {}", e);
+                        Self::update_transmission_status_static(status, false);
+                    } else {
+                        // Uncomment for detailed logging:
+                        // println!("LoRa batch sent: {} bytes", framed_data.len());
+                        Self::update_transmission_status_static(status, true);
+                    }
                 }
-                Err(_) => {
+                Err(e) => {
+                    println!("LoRa write error: {}", e);
                     Self::update_transmission_status_static(status, false);
                 }
             }
+        } else {
+            println!("LoRa port not available");
+            Self::update_transmission_status_static(status, false);
         }
     }
 
@@ -784,7 +981,7 @@ impl SerialManager {
         }
     }
 
-    // Fallback individual transmission method
+    // Fallback individual transmission method (for compatibility)
     fn send_can_frame_individual(&self, can_id: u32, data: &[u8]) -> Result<(), String> {
         let lora_connected = self.lora_status.lock().unwrap().connected;
         let rfd_connected = self.rfd_status.lock().unwrap().connected;
@@ -817,17 +1014,7 @@ impl SerialManager {
         }
     }
 
-    pub fn enable_batching(&self, enabled: bool) {
-        *self.batching_enabled.lock().unwrap() = enabled;
-    }
-
-    pub fn get_batch_stats(&self) -> (usize, usize) {
-        let rfd_count = self.rfd_batcher.lock().unwrap().frames.len();
-        let lora_count = self.lora_batcher.lock().unwrap().frames.len();
-        (rfd_count, lora_count)
-    }
-
-    // Fast LoRa transmission with immediate timeout and status tracking
+    // Fast LoRa transmission (individual frames)
     fn send_can_frame_lora_fast(&self, can_id: u32, data: &[u8]) -> Result<(), String> {
         // Create combined payload with ID (4 bytes) + data
         let mut payload = Vec::with_capacity(4 + data.len());
@@ -870,7 +1057,7 @@ impl SerialManager {
         };
 
         if let Some(port) = lora_conn.port.as_mut() {
-            // Set a very short timeout for transmission
+            // Set a short timeout for transmission
             let _ = port.set_timeout(Duration::from_millis(TRANSMISSION_TIMEOUT_MS));
 
             match port.write_all(&framed_data) {
@@ -890,7 +1077,7 @@ impl SerialManager {
         }
     }
 
-    // Fast RFD transmission with immediate timeout and status tracking
+    // Fast RFD transmission (individual frames)
     fn send_can_frame_rfd_fast(&self, can_id: u32, data: &[u8]) -> Result<(), String> {
         // For RFD 900x2, we send the raw CAN ID followed by the data
         let mut payload = Vec::with_capacity(4 + data.len());
@@ -908,7 +1095,7 @@ impl SerialManager {
         };
 
         if let Some(port) = rfd_conn.port.as_mut() {
-            // Set a very short timeout for transmission
+            // Set a short timeout for transmission
             let _ = port.set_timeout(Duration::from_millis(TRANSMISSION_TIMEOUT_MS));
 
             match port.write_all(&payload) {
@@ -940,6 +1127,21 @@ impl SerialManager {
                 status.consecutive_failures += 1;
             }
         }
+    }
+
+    pub fn enable_batching(&self, enabled: bool) {
+        *self.batching_enabled.lock().unwrap() = enabled;
+        if enabled {
+            println!("Enhanced batching enabled");
+        } else {
+            println!("Enhanced batching disabled");
+        }
+    }
+
+    pub fn get_batch_stats(&self) -> (usize, usize) {
+        let rfd_count = self.rfd_batcher.lock().unwrap().get_queue_size();
+        let lora_count = self.lora_batcher.lock().unwrap().get_queue_size();
+        (rfd_count, lora_count)
     }
 
     // List available serial ports
@@ -985,12 +1187,17 @@ impl Clone for SerialManager {
 pub fn parse_can_batch(batch_data: &[u8]) -> Vec<CanFrameData> {
     let mut frames = Vec::new();
 
-    if batch_data.len() < 2 {
+    if batch_data.len() < 6 {
+        return frames; // Need at least start marker + frame count
+    }
+
+    // Check for start marker
+    if &batch_data[0..4] != BATCH_START_MARKER {
         return frames;
     }
 
-    let frame_count = u16::from_be_bytes([batch_data[0], batch_data[1]]) as usize;
-    let mut offset = 2;
+    let frame_count = u16::from_be_bytes([batch_data[4], batch_data[5]]) as usize;
+    let mut offset = 6; // Skip start marker and frame count
 
     for _ in 0..frame_count {
         if offset >= batch_data.len() {
@@ -1025,8 +1232,8 @@ mod tests {
     }
 
     #[test]
-    fn test_batching() {
-        let mut batcher = FrameBatcher::new();
+    fn test_enhanced_batching() {
+        let mut batcher = ImprovedFrameBatcher::new();
 
         // Add some frames
         let frame1 = CanFrameData::new(0x100, &[1, 2, 3, 4]);
@@ -1036,10 +1243,28 @@ mod tests {
         assert!(batcher.add_frame(frame2));
 
         let batch = batcher.create_batch();
+        
+        // Verify batch structure
+        assert!(batch.len() > 10); // Should have markers, count, frames, checksum
+        assert_eq!(&batch[0..4], BATCH_START_MARKER);
+        
         let parsed_frames = parse_can_batch(&batch);
-
         assert_eq!(parsed_frames.len(), 2);
         assert_eq!(parsed_frames[0].id, 0x100);
         assert_eq!(parsed_frames[1].id, 0x200);
+    }
+
+    #[test]
+    fn test_frame_filtering() {
+        let mut filter = FrameFilter::new();
+        
+        // Test rapid messages get filtered
+        let frame = CanFrameData::new(0x300, &[0x40, 0x00, 0x04, 0x00]);
+        
+        assert!(filter.should_transmit(&frame)); // First message allowed
+        assert!(!filter.should_transmit(&frame)); // Second message too soon, filtered
+        
+        // Wait for interval to pass (would need to mock time in real test)
+        // assert!(filter.should_transmit(&frame)); // After interval, allowed again
     }
 }
