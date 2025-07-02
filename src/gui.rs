@@ -203,6 +203,11 @@ impl Application for TelemetryGui {
                     }
                     _ => "Unknown",
                 };
+                
+                // Clear existing DTC faults when processing new DTC message
+                if message_name == "BMS_DTC" {
+                    self.active_faults.retain(|name, _| !name.starts_with("Fault_DTC"));
+                }
 
                 // Process telemetry data using mapping system
                 for line in decoded_str.lines() {
@@ -241,9 +246,6 @@ impl Application for TelemetryGui {
                                         message_name: message_name.to_string(),
                                     };
                                     self.active_faults.insert(fault_name.clone(), new_fault);
-                                } else {
-                                    // DTC fault is cleared
-                                    self.active_faults.remove(&fault_name);
                                 }
                             }
                         }
