@@ -10,11 +10,10 @@ socketcan = "3.5.0"
 futures = "0.3.31"
 can-dbc = "6.0.0"
 chrono = "0.4.40"
-prost = "0.12"
 bytes = "1.5"
 serialport = "4.3"
 clap = { version = "4.4", features = ["derive"] }
 rand = "0.9.1"
 
 [build-dependencies]
-prost-build = "0.12"
+# prost-build removed - no longer using protobuf

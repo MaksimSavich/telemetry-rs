@@ -1,4 +1,4 @@
-// Optimized src/gui.rs file
+// Optimized src/gui.rs file with enhanced batching integration
 
 use crate::can::CanDecoder;
 use crate::logger::CanLogger;
@@ -61,11 +61,9 @@ pub struct TelemetryGui {
     serial_manager: SerialManager,
 
     // Radio status
-    lora_connected: bool,
     rfd_connected: bool,
 
     // Enable/disable flags
-    lora_enabled: bool,
     rfd_enabled: bool,
 
     // Configuration mappings
@@ -77,26 +75,17 @@ impl Application for TelemetryGui {
     type Executor = iced::executor::Default;
     type Message = Message;
     type Theme = iced::Theme;
-    type Flags = (bool, bool); // (lora_enabled, rfd_enabled)
+    type Flags = bool; // rfd_enabled
 
     fn theme(&self) -> Self::Theme {
         iced::Theme::Dark
     }
 
     fn new(flags: Self::Flags) -> (Self, Command<Message>) {
-        let (lora_enabled, rfd_enabled) = flags;
+        let rfd_enabled = flags;
 
-        let serial_manager = SerialManager::new();
-
-        // Set enable/disable flags
-        serial_manager.set_lora_enabled(lora_enabled);
-        serial_manager.set_rfd_enabled(rfd_enabled);
-
-        // Start the background scanning for modems
-        let mut sm = serial_manager.clone();
-        if let Err(e) = sm.start_background_scanning() {
-            println!("Failed to start background scanning: {}", e);
-        }
+        // Create enhanced serial manager with improved batching
+        let serial_manager = Self::create_enhanced_serial_manager(rfd_enabled);
 
         // Initialize logger
         let logger = match CanLogger::new() {
@@ -142,9 +131,7 @@ impl Application for TelemetryGui {
                 decoder: CanDecoder::new("telemetry.dbc"),
                 logger,
                 serial_manager,
-                lora_connected: false,
                 rfd_connected: false,
-                lora_enabled,
                 rfd_enabled,
                 current_time: Local::now().format("%H:%M:%S").to_string(),
                 mppt_data: MpptData::default(),
@@ -159,8 +146,7 @@ impl Application for TelemetryGui {
 
     fn title(&self) -> String {
         format!(
-            "Telemetry RS - LoRa: {} | RFD: {}",
-            if self.lora_enabled { "ON" } else { "OFF" },
+            "Telemetry RS - RFD: {}",
             if self.rfd_enabled { "ON" } else { "OFF" }
         )
     }
@@ -264,8 +250,9 @@ impl Application for TelemetryGui {
                     }
                 }
 
-                // Send the CAN frame to all enabled modems (async, non-blocking)
-                self.send_can_frame_to_modems_async(raw_id, frame.data());
+                // UPDATED: Send the CAN frame using enhanced batching system
+                // This now includes automatic filtering and intelligent batching
+                self.send_can_frame_to_modems_enhanced(raw_id, frame.data());
             }
 
             Message::ToggleFullscreen => {
@@ -284,8 +271,8 @@ impl Application for TelemetryGui {
                 // Update current time
                 self.current_time = Local::now().format("%H:%M:%S").to_string();
 
-                // Update modem connection status (non-blocking)
-                self.update_modem_status();
+                // Update modem connection status (enhanced monitoring)
+                self.update_modem_status_enhanced();
 
                 // Handle fault cycling (faster)
                 let fault_count = self.active_faults.len();
@@ -333,7 +320,6 @@ impl Application for TelemetryGui {
         // Create UI elements
         let can_status = can_status_indicator(self.can_connected);
         let radio_status = radio_status_indicators(
-            self.lora_connected && self.lora_enabled,
             self.rfd_connected && self.rfd_enabled,
         );
         let mppt_info = mppt_info_box(&self.mppt_data);
@@ -360,10 +346,10 @@ impl Application for TelemetryGui {
     fn subscription(&self) -> Subscription<Message> {
         // Combine subscriptions with optimized intervals
         Subscription::batch(vec![
-            // CAN subscription - optimized for minimal latency
+            // Enhanced CAN subscription with better error handling
             {
                 let decoder = self.decoder.clone();
-                subscription::unfold("can_subscription", decoder, |decoder| async {
+                subscription::unfold("enhanced_can_subscription", decoder, |decoder| async {
                     let socket = match CanSocket::open("can0") {
                         Ok(s) => s,
                         Err(e) => {
@@ -421,6 +407,85 @@ impl Application for TelemetryGui {
 }
 
 impl TelemetryGui {
+    // UPDATED: Create SerialManager with enhanced batching
+    fn create_enhanced_serial_manager(rfd_enabled: bool) -> SerialManager {
+        let mut manager = SerialManager::new();
+        
+        // Configure modem settings
+        manager.set_rfd_enabled(rfd_enabled);
+        
+        // Start background scanning
+        if let Err(e) = manager.start_background_scanning() {
+            println!("Failed to start background scanning: {}", e);
+        }
+        
+        // Start enhanced batching
+        if let Err(e) = manager.start_batching() {
+            println!("Failed to start enhanced batching: {}", e);
+        } else {
+            println!("✓ Enhanced batching started successfully");
+            println!("  - Automatic message filtering enabled");
+            println!("  - Synchronization markers enabled");
+            println!("  - Error recovery enabled");
+        }
+        
+        manager
+    }
+
+    // UPDATED: Enhanced CAN frame transmission with intelligent batching
+    fn send_can_frame_to_modems_enhanced(&self, can_id: u32, data: &[u8]) {
+        // The enhanced SerialManager now automatically handles:
+        // - Message filtering to prevent spam (especially 0x300)
+        // - Intelligent batching with proper synchronization
+        // - Error recovery and health monitoring
+        // - Rate limiting based on DBC transmission intervals
+        
+        if let Err(e) = self.serial_manager.send_can_frame(can_id, data) {
+            // Only log errors occasionally to prevent console spam
+            if rand::random::<u8>() < 5 { // ~2% of errors
+                eprintln!("CAN frame transmission error: {}", e);
+            }
+        }
+    }
+
+    // UPDATED: Enhanced modem status monitoring with batching statistics
+    fn update_modem_status_enhanced(&mut self) {
+        // Check enabled state first
+        if self.rfd_enabled {
+            if let Ok(rfd_status) = self.serial_manager.rfd_status.try_lock() {
+                self.rfd_connected = rfd_status.connected;
+            }
+        } else {
+            self.rfd_connected = false;
+        }
+
+        // Monitor batch queue health
+        let rfd_queue = self.serial_manager.get_batch_stats();
+        
+        // Log enhanced statistics periodically for monitoring
+        static mut LAST_STATS_LOG: Option<std::time::Instant> = None;
+        unsafe {
+            let now = std::time::Instant::now();
+            let should_log = match LAST_STATS_LOG {
+                Some(last) => now.duration_since(last).as_secs() >= 30, // Every 30 seconds
+                None => true,
+            };
+            
+            if should_log {
+                if rfd_queue > 0 {
+                    println!("📊 Batch queues - RFD: {}", rfd_queue);
+                }
+                
+                // Check for queue buildup (potential issue)
+                if rfd_queue > 20 {
+                    println!("⚠ Large batch queues detected - possible transmission issues");
+                }
+                
+                LAST_STATS_LOG = Some(now);
+            }
+        }
+    }
+
     // Helper method to update GUI values based on the configuration
     fn update_gui_value(&mut self, gui_value_type: &GuiValueType, value: &str) {
         match gui_value_type {
@@ -526,6 +591,7 @@ impl TelemetryGui {
             GuiValueType::BpsState => {
                 self.bps_state = value.to_string();
             }
+            // BMS data handling (keeping existing structure)
             GuiValueType::BmsPackDcl => {
                 // BMS data no longer displayed in main info box
             }
@@ -576,44 +642,6 @@ impl TelemetryGui {
         } else {
             // Fault is cleared
             self.active_faults.remove(&fault_key);
-        }
-    }
-
-    // Helper method to update modem status from the SerialManager (non-blocking)
-    fn update_modem_status(&mut self) {
-        // Only check status for enabled modems using try_lock to avoid blocking
-        if self.lora_enabled {
-            if let Ok(lora_status) = self.serial_manager.lora_status.try_lock() {
-                self.lora_connected = lora_status.connected;
-            }
-        } else {
-            self.lora_connected = false;
-        }
-
-        if self.rfd_enabled {
-            if let Ok(rfd_status) = self.serial_manager.rfd_status.try_lock() {
-                self.rfd_connected = rfd_status.connected;
-            }
-        } else {
-            self.rfd_connected = false;
-        }
-    }
-
-    // Async helper method to send CAN frame to enabled modems without blocking GUI
-    fn send_can_frame_to_modems_async(&self, can_id: u32, data: &[u8]) {
-        // Only send to enabled modems
-        if (self.lora_enabled && self.lora_connected) || (self.rfd_enabled && self.rfd_connected) {
-            // Clone data for async operation to avoid lifetime issues
-            let data_vec = data.to_vec();
-            let serial_manager = self.serial_manager.clone();
-
-            // Use tokio to spawn a non-blocking task for transmission
-            tokio::spawn(async move {
-                if let Err(_) = serial_manager.send_can_frame(can_id, &data_vec) {
-                    // Silently handle errors to avoid console spam
-                    // The SerialManager tracks failures internally for health monitoring
-                }
-            });
         }
     }
 
@@ -689,4 +717,32 @@ impl TelemetryGui {
             _ => "Mixed".to_string(),
         };
     }
+
+    // OPTIONAL: Debugging and monitoring methods
+    pub fn enable_batching(&self, enabled: bool) {
+        self.serial_manager.enable_batching(enabled);
+        println!("Batching {}", if enabled { "enabled" } else { "disabled" });
+    }
+    
+    pub fn get_batching_stats(&self) -> usize {
+        self.serial_manager.get_batch_stats()
+    }
+    
+    // Get detailed transmission health information
+    pub fn get_transmission_health(&self) -> TransmissionHealth {
+        let rfd_status = self.serial_manager.rfd_status.lock().unwrap();
+        
+        TransmissionHealth {
+            rfd_connected: rfd_status.connected,
+            rfd_failures: rfd_status.consecutive_failures,
+            rfd_last_success: rfd_status.last_success,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TransmissionHealth {
+    pub rfd_connected: bool,
+    pub rfd_failures: u32,
+    pub rfd_last_success: Option<std::time::Instant>,
 }

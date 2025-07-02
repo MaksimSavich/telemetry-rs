@@ -6,7 +6,6 @@ use iced::{Alignment, Element, Length};
 #[derive(Clone)]
 pub struct ModemStatusData {
     pub rfd_connected: bool,
-    pub lora_connected: bool,
 }
 
 pub fn modem_status(data: &ModemStatusData) -> Element<'static, Message> {
@@ -16,23 +15,10 @@ pub fn modem_status(data: &ModemStatusData) -> Element<'static, Message> {
         "RFD: Disconnected"
     };
 
-    let lora_text = if data.lora_connected {
-        "LoRa: Connected"
-    } else {
-        "LoRa: Disconnected"
-    };
-
     container(
-        row![
-            text(rfd_text)
-                .width(Length::Fill)
-                .horizontal_alignment(iced::alignment::Horizontal::Center),
-            text(lora_text)
-                .width(Length::Fill)
-                .horizontal_alignment(iced::alignment::Horizontal::Center)
-        ]
-        .spacing(10)
-        .align_items(Alignment::Center),
+        text(rfd_text)
+            .width(Length::Fill)
+            .horizontal_alignment(iced::alignment::Horizontal::Center)
     )
     .padding(5)
     .width(Length::Fill)
