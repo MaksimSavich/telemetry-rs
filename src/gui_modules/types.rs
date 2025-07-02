@@ -145,35 +145,35 @@ pub fn get_gui_value_mappings() -> HashMap<(&'static str, &'static str), Vec<Gui
 
     // MPPT data - assuming MPPT message structure
     mappings.insert(
-        ("MPPT", "MPPT1_Input_Voltage"),
+        ("MPPT1", "Input_Voltage_V"),
         vec![GuiValueType::Mppt1InputVoltage],
     );
     mappings.insert(
-        ("MPPT", "MPPT1_Input_Current"),
+        ("MPPT1", "Input_Current_A"),
         vec![GuiValueType::Mppt1InputCurrent],
     );
     mappings.insert(
-        ("MPPT", "MPPT1_Output_Voltage"),
+        ("MPPT1", "Output_Voltage_V"),
         vec![GuiValueType::Mppt1OutputVoltage],
     );
     mappings.insert(
-        ("MPPT", "MPPT1_Output_Current"),
+        ("MPPT1", "Output_Current_A"),
         vec![GuiValueType::Mppt1OutputCurrent],
     );
     mappings.insert(
-        ("MPPT", "MPPT2_Input_Voltage"),
+        ("MPPT2", "Input_Voltage_V"),
         vec![GuiValueType::Mppt2InputVoltage],
     );
     mappings.insert(
-        ("MPPT", "MPPT2_Input_Current"),
+        ("MPPT2", "Input_Current_A"),
         vec![GuiValueType::Mppt2InputCurrent],
     );
     mappings.insert(
-        ("MPPT", "MPPT2_Output_Voltage"),
+        ("MPPT2", "Output_Voltage_V"),
         vec![GuiValueType::Mppt2OutputVoltage],
     );
     mappings.insert(
-        ("MPPT", "MPPT2_Output_Current"),
+        ("MPPT2", "Output_Current_A"),
         vec![GuiValueType::Mppt2OutputCurrent],
     );
 
