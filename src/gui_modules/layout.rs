@@ -61,7 +61,7 @@ pub fn main_layout<'a>(
     // The fault panel inside can scroll, but the container stays the same size
     let fault_row = container(fault_display)
         .width(Length::Fill)
-        .height(Length::Fixed(150.0)) // Fixed height container
+        .height(Length::Fixed(135.0)) // Fixed height container
         .padding([0, 10]);
 
     // Bottom row with time and optional warning
