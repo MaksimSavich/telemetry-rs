@@ -203,10 +203,11 @@ impl Application for TelemetryGui {
                     }
                     _ => "Unknown",
                 };
-                
+
                 // Clear existing DTC faults when processing new DTC message
                 if message_name == "BMS_DTC" {
-                    self.active_faults.retain(|name, _| !name.starts_with("Fault_DTC"));
+                    self.active_faults
+                        .retain(|name, _| !name.starts_with("Fault_DTC"));
                 }
 
                 // Process telemetry data using mapping system
@@ -358,7 +359,7 @@ impl Application for TelemetryGui {
             {
                 let decoder = self.decoder.clone();
                 subscription::unfold("enhanced_can_subscription", decoder, |decoder| async {
-                    let socket = match CanSocket::open("vcan0") {
+                    let socket = match CanSocket::open("can0") {
                         Ok(s) => s,
                         Err(e) => {
                             eprintln!("Failed to open CAN socket: {}", e);
