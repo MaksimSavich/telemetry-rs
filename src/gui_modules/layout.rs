@@ -54,7 +54,7 @@ pub fn main_layout<'a>(
     // BPS info row with fixed height
     let bps_row = container(bps_info)
         .width(Length::Fill)
-        .height(Length::Fixed(100.0))
+        .height(Length::Fixed(50.0))
         .padding([0, 10]);
 
     // Fault display row with fixed container height
@@ -62,24 +62,21 @@ pub fn main_layout<'a>(
     let fault_row = container(fault_display)
         .width(Length::Fill)
         .height(Length::Fixed(180.0)) // Fixed height container
-        .padding([0, 10]);
+        .padding([0, 0]);
 
     // Bottom row with time and optional warning
     let bottom_row = if let Some(warning) = warning_indicator {
         container(
-            column![
-                warning,
-                time_display,
-            ]
-            .spacing(5)
-            .align_items(Alignment::Center)
+            column![warning, time_display,]
+                .spacing(5)
+                .align_items(Alignment::Center),
         )
         .width(Length::Fill)
-        .height(Length::Fixed(80.0))
+        .height(Length::Fixed(50.0))
     } else {
         container(time_display)
             .width(Length::Fill)
-            .height(Length::Fixed(50.0))
+            .height(Length::Fixed(30.0))
     };
 
     // Combine all sections with fixed layout
