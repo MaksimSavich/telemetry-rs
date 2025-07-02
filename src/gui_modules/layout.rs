@@ -37,7 +37,7 @@ pub fn main_layout<'a>(
         .align_items(Alignment::Center),
     )
     .width(Length::Fill)
-    .height(Length::Fixed(40.0))
+    .height(Length::Fixed(30.0))
     .padding([5, 10]);
 
     // Main info row: BMS info (left), speed/direction (center), battery info (right)
@@ -48,21 +48,21 @@ pub fn main_layout<'a>(
             .align_items(Alignment::Center),
     )
     .width(Length::Fill)
-    .height(Length::Fixed(220.0)) // Fixed height for consistency
+    .height(Length::Fixed(210.0)) // Fixed height for consistency
     .padding([5, 10]);
 
     // BPS info row with fixed height
     let bps_row = container(bps_info)
         .width(Length::Fill)
         .height(Length::Fixed(70.0))
-        .padding([0, 5]);
+        .padding([0, 10]);
 
     // Fault display row with fixed container height
     // The fault panel inside can scroll, but the container stays the same size
     let fault_row = container(fault_display)
         .width(Length::Fill)
-        .height(Length::Fixed(180.0)) // Fixed height container
-        .padding([0, 50]);
+        .height(Length::Fixed(170.0)) // Fixed height container
+        .padding([0, 10]);
 
     // Bottom row with time and optional warning
     let bottom_row = if let Some(warning) = warning_indicator {
@@ -76,7 +76,7 @@ pub fn main_layout<'a>(
     } else {
         container(time_display)
             .width(Length::Fill)
-            .height(Length::Fixed(30.0))
+            .height(Length::Fixed(40.0))
     };
 
     // Combine all sections with fixed layout
@@ -89,7 +89,7 @@ pub fn main_layout<'a>(
         Space::with_height(Length::Fill), // This will absorb any extra space
         bottom_row,
     ]
-    .spacing(10)
+    .spacing(5)
     .width(Length::Fill)
     .height(Length::Fill)
     .into()
