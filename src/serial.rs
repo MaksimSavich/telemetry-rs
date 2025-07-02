@@ -1,5 +1,6 @@
 use prost::Message;
 use serialport::{SerialPort, SerialPortType};
+use std::collections::VecDeque;
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -7,27 +8,137 @@ use std::time::{Duration, Instant};
 
 use crate::proto::{Packet, PacketType, Transmission};
 
-// Define the start and end delimiters to match the LoRa module
-const START_DELIMITER: &[u8] = b"<START>"; // Start delimiter
-const END_DELIMITER: &[u8] = b"<END>"; // End delimiter
+// Batching configuration
+const MAX_BATCH_SIZE: usize = 32; // Max CAN frames per batch
+const MAX_BATCH_BYTES: usize = 200; // Max bytes per batch (within radio limits)
+const BATCH_TIMEOUT_MS: u64 = 10; // Force send batch after 10ms
+const SINGLE_CAN_FRAME_SIZE: usize = 12; // 4 bytes ID + 8 bytes max data
 
-// RFD 900x2 configuration
+// Frame delimiters
+const START_DELIMITER: &[u8] = b"<START>";
+const END_DELIMITER: &[u8] = b"<END>";
+
+// Radio configuration constants
 const RFD_BAUD_RATE: u32 = 57600;
-const RFD_SCAN_INTERVAL_MS: u64 = 5000; // Scan every 5 seconds
-
-// LoRa configuration
 const LORA_BAUD_RATE: u32 = 115200;
-const LORA_SCAN_INTERVAL_MS: u64 = 5000; // Scan every 5 seconds
-
-// Connection monitoring - improved intervals
-const CONNECTION_CHECK_INTERVAL_MS: u64 = 10000; // Check connection every 10 seconds (less frequent)
-const TRANSMISSION_TIMEOUT_MS: u64 = 1000; // Timeout for transmission operations
-const CONNECTION_GRACE_PERIOD_MS: u64 = 30000; // Consider disconnected after 30 seconds of no successful transmission
+const CONNECTION_CHECK_INTERVAL_MS: u64 = 10000;
+const TRANSMISSION_TIMEOUT_MS: u64 = 50; // Increased for batch transmissions
+const CONNECTION_GRACE_PERIOD_MS: u64 = 30000;
+const RFD_SCAN_INTERVAL_MS: u64 = 5000;
+const LORA_SCAN_INTERVAL_MS: u64 = 5000;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ModemType {
     Lora,
     Rfd900x,
+}
+
+#[derive(Debug, Clone)]
+pub struct CanFrameData {
+    pub id: u32,
+    pub data: Vec<u8>,
+    pub timestamp: Instant,
+}
+
+impl CanFrameData {
+    pub fn new(id: u32, data: &[u8]) -> Self {
+        Self {
+            id,
+            data: data.to_vec(),
+            timestamp: Instant::now(),
+        }
+    }
+
+    // Serialize to bytes: [ID(4)] + [LEN(1)] + [DATA(0-8)]
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(5 + self.data.len());
+        bytes.extend_from_slice(&self.id.to_be_bytes()); // 4 bytes ID
+        bytes.push(self.data.len() as u8); // 1 byte length
+        bytes.extend_from_slice(&self.data); // 0-8 bytes data
+        bytes
+    }
+
+    // Deserialize from bytes
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
+        if bytes.len() < 5 {
+            return None;
+        }
+
+        let id = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+        let data_len = bytes[4] as usize;
+
+        if bytes.len() < 5 + data_len || data_len > 8 {
+            return None;
+        }
+
+        let data = bytes[5..5 + data_len].to_vec();
+
+        Some(Self {
+            id,
+            data,
+            timestamp: Instant::now(),
+        })
+    }
+}
+
+pub struct FrameBatcher {
+    frames: VecDeque<CanFrameData>,
+    last_send: Instant,
+    total_bytes: usize,
+}
+
+impl FrameBatcher {
+    pub fn new() -> Self {
+        Self {
+            frames: VecDeque::new(),
+            last_send: Instant::now(),
+            total_bytes: 0,
+        }
+    }
+
+    pub fn add_frame(&mut self, frame: CanFrameData) -> bool {
+        let frame_size = 5 + frame.data.len(); // ID(4) + LEN(1) + DATA
+
+        // Check if adding this frame would exceed limits
+        if self.frames.len() >= MAX_BATCH_SIZE || self.total_bytes + frame_size > MAX_BATCH_BYTES {
+            return false; // Batch is full
+        }
+
+        self.total_bytes += frame_size;
+        self.frames.push_back(frame);
+        true
+    }
+
+    pub fn should_send(&self) -> bool {
+        if self.frames.is_empty() {
+            return false;
+        }
+
+        // Send if batch is full or timeout reached
+        self.frames.len() >= MAX_BATCH_SIZE
+            || self.total_bytes >= MAX_BATCH_BYTES
+            || self.last_send.elapsed().as_millis() >= BATCH_TIMEOUT_MS as u128
+    }
+
+    pub fn create_batch(&mut self) -> Vec<u8> {
+        let mut batch = Vec::new();
+
+        // Add frame count header (2 bytes for up to 65535 frames)
+        batch.extend_from_slice(&(self.frames.len() as u16).to_be_bytes());
+
+        // Add all frames
+        while let Some(frame) = self.frames.pop_front() {
+            batch.extend_from_slice(&frame.to_bytes());
+        }
+
+        self.total_bytes = 0;
+        self.last_send = Instant::now();
+        batch
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.frames.is_empty()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -68,6 +179,12 @@ pub struct SerialManager {
     scan_running: Arc<Mutex<bool>>,
     lora_enabled: Arc<Mutex<bool>>,
     rfd_enabled: Arc<Mutex<bool>>,
+
+    // New batching fields
+    rfd_batcher: Arc<Mutex<FrameBatcher>>,
+    lora_batcher: Arc<Mutex<FrameBatcher>>,
+    batch_thread: Option<JoinHandle<()>>,
+    batching_enabled: Arc<Mutex<bool>>,
 }
 
 impl SerialManager {
@@ -93,6 +210,10 @@ impl SerialManager {
             scan_running: Arc::new(Mutex::new(false)),
             lora_enabled: Arc::new(Mutex::new(false)), // Default to disabled
             rfd_enabled: Arc::new(Mutex::new(true)),
+            rfd_batcher: Arc::new(Mutex::new(FrameBatcher::new())),
+            lora_batcher: Arc::new(Mutex::new(FrameBatcher::new())),
+            batch_thread: None,
+            batching_enabled: Arc::new(Mutex::new(true)),
         };
 
         instance
@@ -424,8 +545,247 @@ impl SerialManager {
         Ok(())
     }
 
-    // Send CAN frame to all enabled and connected modems - OPTIMIZED
+    // Start the batching thread
+    pub fn start_batching(&mut self) -> Result<(), String> {
+        if self.batch_thread.is_some() {
+            return Ok(()); // Already running
+        }
+
+        let rfd_batcher = Arc::clone(&self.rfd_batcher);
+        let lora_batcher = Arc::clone(&self.lora_batcher);
+        let rfd_connection = Arc::clone(&self.rfd_connection);
+        let lora_connection = Arc::clone(&self.lora_connection);
+        let rfd_status = Arc::clone(&self.rfd_status);
+        let lora_status = Arc::clone(&self.lora_status);
+        let batching_enabled = Arc::clone(&self.batching_enabled);
+        let rfd_enabled = Arc::clone(&self.rfd_enabled);
+        let lora_enabled = Arc::clone(&self.lora_enabled);
+
+        let batch_thread = thread::spawn(move || {
+            loop {
+                if !*batching_enabled.lock().unwrap() {
+                    break;
+                }
+
+                // Check RFD batching
+                if *rfd_enabled.lock().unwrap() {
+                    let should_send = {
+                        let batcher = rfd_batcher.lock().unwrap();
+                        batcher.should_send()
+                    };
+
+                    if should_send {
+                        let batch_data = {
+                            let mut batcher = rfd_batcher.lock().unwrap();
+                            batcher.create_batch()
+                        };
+
+                        Self::send_rfd_batch(&rfd_connection, &rfd_status, &batch_data);
+                    }
+                }
+
+                // Check LoRa batching
+                if *lora_enabled.lock().unwrap() {
+                    let should_send = {
+                        let batcher = lora_batcher.lock().unwrap();
+                        batcher.should_send()
+                    };
+
+                    if should_send {
+                        let batch_data = {
+                            let mut batcher = lora_batcher.lock().unwrap();
+                            batcher.create_batch()
+                        };
+
+                        Self::send_lora_batch(&lora_connection, &lora_status, &batch_data);
+                    }
+                }
+
+                // Small sleep to prevent busy waiting
+                thread::sleep(Duration::from_millis(1));
+            }
+        });
+
+        self.batch_thread = Some(batch_thread);
+        Ok(())
+    }
+
+    // New optimized CAN frame sending with batching
     pub fn send_can_frame(&self, can_id: u32, data: &[u8]) -> Result<(), String> {
+        let frame = CanFrameData::new(can_id, data);
+        let lora_enabled = self.is_lora_enabled();
+        let rfd_enabled = self.is_rfd_enabled();
+        let batching_enabled = *self.batching_enabled.lock().unwrap();
+
+        if !batching_enabled {
+            // Fall back to individual transmission
+            return self.send_can_frame_individual(can_id, data);
+        }
+
+        let mut success_count = 0;
+        let mut errors = Vec::new();
+
+        // Add to RFD batch
+        if rfd_enabled && self.rfd_status.lock().unwrap().connected {
+            let mut batcher = self.rfd_batcher.lock().unwrap();
+            if !batcher.add_frame(frame.clone()) {
+                // Batch is full, force send current batch and retry
+                drop(batcher);
+                self.force_send_rfd_batch();
+                let mut batcher = self.rfd_batcher.lock().unwrap();
+                if batcher.add_frame(frame.clone()) {
+                    success_count += 1;
+                } else {
+                    errors.push("RFD batch overflow".to_string());
+                }
+            } else {
+                success_count += 1;
+            }
+        }
+
+        // Add to LoRa batch
+        if lora_enabled && self.lora_status.lock().unwrap().connected {
+            let mut batcher = self.lora_batcher.lock().unwrap();
+            if !batcher.add_frame(frame.clone()) {
+                // Batch is full, force send current batch and retry
+                drop(batcher);
+                self.force_send_lora_batch();
+                let mut batcher = self.lora_batcher.lock().unwrap();
+                if batcher.add_frame(frame) {
+                    success_count += 1;
+                } else {
+                    errors.push("LoRa batch overflow".to_string());
+                }
+            } else {
+                success_count += 1;
+            }
+        }
+
+        if success_count > 0 {
+            Ok(())
+        } else if !errors.is_empty() {
+            Err(errors.join("; "))
+        } else {
+            Err("No modems available for batching".to_string())
+        }
+    }
+
+    fn force_send_rfd_batch(&self) {
+        let batch_data = {
+            let mut batcher = self.rfd_batcher.lock().unwrap();
+            if batcher.is_empty() {
+                return;
+            }
+            batcher.create_batch()
+        };
+
+        Self::send_rfd_batch(&self.rfd_connection, &self.rfd_status, &batch_data);
+    }
+
+    fn force_send_lora_batch(&self) {
+        let batch_data = {
+            let mut batcher = self.lora_batcher.lock().unwrap();
+            if batcher.is_empty() {
+                return;
+            }
+            batcher.create_batch()
+        };
+
+        Self::send_lora_batch(&self.lora_connection, &self.lora_status, &batch_data);
+    }
+
+    fn send_rfd_batch(
+        connection: &Arc<Mutex<ModemConnection>>,
+        status: &Arc<Mutex<ModemStatus>>,
+        batch_data: &[u8],
+    ) {
+        let mut conn = match connection.try_lock() {
+            Ok(guard) => guard,
+            Err(_) => return, // Port busy
+        };
+
+        if let Some(port) = conn.port.as_mut() {
+            let _ = port.set_timeout(Duration::from_millis(TRANSMISSION_TIMEOUT_MS));
+
+            match port.write_all(batch_data) {
+                Ok(_) => {
+                    let _ = port.flush();
+                    Self::update_transmission_status_static(status, true);
+                }
+                Err(_) => {
+                    Self::update_transmission_status_static(status, false);
+                }
+            }
+        }
+    }
+
+    fn send_lora_batch(
+        connection: &Arc<Mutex<ModemConnection>>,
+        status: &Arc<Mutex<ModemStatus>>,
+        batch_data: &[u8],
+    ) {
+        // Create protobuf transmission with batch data
+        let transmission = Transmission {
+            payload: batch_data.to_vec(),
+        };
+        let packet = Packet {
+            r#type: PacketType::Transmission as i32,
+            transmission: Some(transmission),
+            settings: None,
+            log: None,
+            request: None,
+            gps: None,
+            ack: false,
+        };
+
+        let mut encoded = Vec::new();
+        if packet.encode(&mut encoded).is_err() {
+            Self::update_transmission_status_static(status, false);
+            return;
+        }
+
+        // Frame with delimiters
+        let mut framed_data =
+            Vec::with_capacity(START_DELIMITER.len() + encoded.len() + END_DELIMITER.len());
+        framed_data.extend_from_slice(START_DELIMITER);
+        framed_data.extend_from_slice(&encoded);
+        framed_data.extend_from_slice(END_DELIMITER);
+
+        let mut conn = match connection.try_lock() {
+            Ok(guard) => guard,
+            Err(_) => return, // Port busy
+        };
+
+        if let Some(port) = conn.port.as_mut() {
+            let _ = port.set_timeout(Duration::from_millis(TRANSMISSION_TIMEOUT_MS));
+
+            match port.write_all(&framed_data) {
+                Ok(_) => {
+                    let _ = port.flush();
+                    Self::update_transmission_status_static(status, true);
+                }
+                Err(_) => {
+                    Self::update_transmission_status_static(status, false);
+                }
+            }
+        }
+    }
+
+    fn update_transmission_status_static(status_arc: &Arc<Mutex<ModemStatus>>, success: bool) {
+        if let Ok(mut status) = status_arc.try_lock() {
+            status.last_transmission_attempt = Some(Instant::now());
+
+            if success {
+                status.last_success = Some(Instant::now());
+                status.consecutive_failures = 0;
+            } else {
+                status.consecutive_failures += 1;
+            }
+        }
+    }
+
+    // Fallback individual transmission method
+    fn send_can_frame_individual(&self, can_id: u32, data: &[u8]) -> Result<(), String> {
         let lora_connected = self.lora_status.lock().unwrap().connected;
         let rfd_connected = self.rfd_status.lock().unwrap().connected;
         let lora_enabled = self.is_lora_enabled();
@@ -455,6 +815,16 @@ impl SerialManager {
         } else {
             Err("No modems available for transmission".to_string())
         }
+    }
+
+    pub fn enable_batching(&self, enabled: bool) {
+        *self.batching_enabled.lock().unwrap() = enabled;
+    }
+
+    pub fn get_batch_stats(&self) -> (usize, usize) {
+        let rfd_count = self.rfd_batcher.lock().unwrap().frames.len();
+        let lora_count = self.lora_batcher.lock().unwrap().frames.len();
+        (rfd_count, lora_count)
     }
 
     // Fast LoRa transmission with immediate timeout and status tracking
@@ -603,6 +973,73 @@ impl Clone for SerialManager {
             scan_running: Arc::clone(&self.scan_running),
             lora_enabled: Arc::clone(&self.lora_enabled),
             rfd_enabled: Arc::clone(&self.rfd_enabled),
+            rfd_batcher: Arc::clone(&self.rfd_batcher),
+            lora_batcher: Arc::clone(&self.lora_batcher),
+            batch_thread: None, // Don't clone the thread
+            batching_enabled: Arc::clone(&self.batching_enabled),
         }
+    }
+}
+
+// Utility functions for parsing received batches
+pub fn parse_can_batch(batch_data: &[u8]) -> Vec<CanFrameData> {
+    let mut frames = Vec::new();
+
+    if batch_data.len() < 2 {
+        return frames;
+    }
+
+    let frame_count = u16::from_be_bytes([batch_data[0], batch_data[1]]) as usize;
+    let mut offset = 2;
+
+    for _ in 0..frame_count {
+        if offset >= batch_data.len() {
+            break;
+        }
+
+        // Find the end of this frame
+        if let Some(frame) = CanFrameData::from_bytes(&batch_data[offset..]) {
+            let frame_size = 5 + frame.data.len();
+            frames.push(frame);
+            offset += frame_size;
+        } else {
+            break; // Invalid frame format
+        }
+    }
+
+    frames
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_can_frame_serialization() {
+        let frame = CanFrameData::new(0x123, &[0xAA, 0xBB, 0xCC]);
+        let bytes = frame.to_bytes();
+        let parsed = CanFrameData::from_bytes(&bytes).unwrap();
+
+        assert_eq!(frame.id, parsed.id);
+        assert_eq!(frame.data, parsed.data);
+    }
+
+    #[test]
+    fn test_batching() {
+        let mut batcher = FrameBatcher::new();
+
+        // Add some frames
+        let frame1 = CanFrameData::new(0x100, &[1, 2, 3, 4]);
+        let frame2 = CanFrameData::new(0x200, &[5, 6, 7, 8]);
+
+        assert!(batcher.add_frame(frame1));
+        assert!(batcher.add_frame(frame2));
+
+        let batch = batcher.create_batch();
+        let parsed_frames = parse_can_batch(&batch);
+
+        assert_eq!(parsed_frames.len(), 2);
+        assert_eq!(parsed_frames[0].id, 0x100);
+        assert_eq!(parsed_frames[1].id, 0x200);
     }
 }
