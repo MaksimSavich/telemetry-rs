@@ -324,7 +324,7 @@ impl Application for TelemetryGui {
         // Create UI elements
         let can_status = can_status_indicator(self.can_connected);
         let radio_status = radio_status_indicators(self.rfd_connected && self.rfd_enabled);
-        let mppt_info = mppt_info_box(&self.mppt_data, &self.bps_data);
+        let mppt_info = mppt_info_box(&self.mppt_data, &bps_data);
         let speed_direction = direction_speed_display(&self.direction, self.speed_mph);
         let battery_info = battery_box(&battery_data);
         let fault_display = fault_display(&self.active_faults, self.fault_page_index);
