@@ -387,13 +387,15 @@ impl ImprovedFrameBatcher {
 
         // COBS encode the payload (this eliminates the need for start/end markers)
         let mut encoded = Vec::new();
-        let encode_result = cobs::encode(&payload, &mut encoded);
-        if encode_result > 0 {
-            // Add zero delimiter for COBS framing
-            encoded.push(0);
-        } else {
-            println!("COBS encoding failed, falling back to raw payload");
-            return payload;
+        match cobs::encode(&payload, &mut encoded) {
+            Ok(_) => {
+                // Add zero delimiter for COBS framing
+                encoded.push(0);
+            }
+            Err(_) => {
+                println!("COBS encoding failed, falling back to raw payload");
+                return payload;
+            }
         }
 
         // Clear sent frames
@@ -921,16 +923,44 @@ impl SerialManager {
                 let mut sent_batch = false;
 
                 // Check RFD batching
-                if *rfd_enabled.lock().unwrap() && rfd_status.lock().unwrap().connected {
+                let rfd_enabled_guard = match rfd_enabled.lock() {
+                    Ok(guard) => guard,
+                    Err(_) => {
+                        println!("RFD enabled mutex poisoned, skipping batch");
+                        continue;
+                    }
+                };
+                let rfd_status_guard = match rfd_status.lock() {
+                    Ok(guard) => guard,
+                    Err(_) => {
+                        println!("RFD status mutex poisoned, skipping batch");
+                        continue;
+                    }
+                };
+                
+                if *rfd_enabled_guard && rfd_status_guard.connected {
+                    drop(rfd_enabled_guard);
+                    drop(rfd_status_guard);
+                    
                     let should_send = {
-                        let batcher = rfd_batcher.lock().unwrap();
-                        batcher.should_send()
+                        match rfd_batcher.lock() {
+                            Ok(batcher) => batcher.should_send(),
+                            Err(_) => {
+                                println!("RFD batcher mutex poisoned, skipping batch");
+                                continue;
+                            }
+                        }
                     };
 
                     if should_send {
                         let batch_data = {
-                            let mut batcher = rfd_batcher.lock().unwrap();
-                            batcher.create_batch()
+                            match rfd_batcher.lock() {
+                                Ok(mut batcher) => batcher.create_batch(),
+                                Err(_) => {
+                                    println!("RFD batcher mutex poisoned, skipping batch");
+                                    continue;
+                                }
+                            }
                         };
 
                         if !batch_data.is_empty() {
@@ -947,7 +977,10 @@ impl SerialManager {
 
                 // Print stats every 10 seconds
                 if last_stats.elapsed().as_secs() >= 10 {
-                    let rfd_queue = rfd_batcher.lock().unwrap().get_queue_size();
+                    let rfd_queue = match rfd_batcher.lock() {
+                        Ok(batcher) => batcher.get_queue_size(),
+                        Err(_) => 0,
+                    };
 
                     println!(
                         "Batch stats (10s): RFD: {} batches ({} queued)",
