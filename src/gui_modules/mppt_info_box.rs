@@ -29,7 +29,13 @@ impl Default for MpptData {
     }
 }
 
-pub fn mppt_info_box(data: &MpptData) -> Element<'static, Message> {
+#[derive(Clone)]
+pub struct BpsData {
+    pub ontime: u64,
+    pub state: String,
+}
+
+pub fn mppt_info_box(data: &MpptData, bpsData: &BpsData) -> Element<'static, Message> {
     container(
         column![
             text("MPPT & BPS Info").size(18),
@@ -70,8 +76,8 @@ pub fn mppt_info_box(data: &MpptData) -> Element<'static, Message> {
                 .width(Length::FillPortion(1)),
                 column![
                     text("BPS Info").size(20),
-                    text(format!("Time On: {:.1} Seconds", data.ontime)),
-                    text(format!("BPS State: {}", data.state)),
+                    text(format!("Time On: {:.1} Seconds", bpsData.ontime)),
+                    text(format!("BPS State: {}", bpsData.state)),
                 ]
                 .spacing(5)
                 .align_items(Alignment::Start),

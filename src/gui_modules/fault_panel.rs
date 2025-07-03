@@ -4,7 +4,7 @@ use iced::widget::{column, container, row, text, Space};
 use iced::{Alignment, Color, Element, Length};
 use std::collections::HashMap;
 
-const FAULTS_PER_PAGE: usize = 5;
+const FAULTS_PER_PAGE: usize = 3;
 
 pub fn fault_display(
     active_faults: &HashMap<String, Fault>,
