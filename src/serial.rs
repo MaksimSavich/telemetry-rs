@@ -387,15 +387,13 @@ impl ImprovedFrameBatcher {
 
         // COBS encode the payload (this eliminates the need for start/end markers)
         let mut encoded = Vec::new();
-        match cobs::encode(&payload, &mut encoded) {
-            Ok(_) => {
-                // Add zero delimiter for COBS framing
-                encoded.push(0);
-            }
-            Err(_) => {
-                println!("COBS encoding failed, falling back to raw payload");
-                return payload;
-            }
+        let encode_result = cobs::encode(&payload, &mut encoded);
+        if encode_result > 0 {
+            // Add zero delimiter for COBS framing
+            encoded.push(0);
+        } else {
+            println!("COBS encoding failed, falling back to raw payload");
+            return payload;
         }
 
         // Clear sent frames
