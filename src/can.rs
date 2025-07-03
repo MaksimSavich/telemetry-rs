@@ -105,7 +105,7 @@ impl CanDecoder {
         if data.len() >= 2 {
             let flags1 = u16::from_le_bytes([data[0], data[1]]);
 
-            for (mask, fault_name) in DTC_FLAGS_1_FAULTS {
+            for (mask, fault_name, _severity) in DTC_FLAGS_1_FAULTS {
                 if flags1 & mask != 0 {
                     result.push_str(&format!(
                         "Fault_DTC1_{}: {}\n",
@@ -120,7 +120,7 @@ impl CanDecoder {
         if data.len() >= 4 {
             let flags2 = u16::from_le_bytes([data[2], data[3]]);
 
-            for (mask, fault_name) in DTC_FLAGS_2_FAULTS {
+            for (mask, fault_name, _severity) in DTC_FLAGS_2_FAULTS {
                 if flags2 & mask != 0 {
                     result.push_str(&format!(
                         "Fault_DTC2_{}: {}\n",

@@ -9,6 +9,7 @@ use socketcan::{CanFrame, CanSocket, EmbeddedFrame, Socket, StandardId};
 use std::collections::HashMap;
 
 use crate::gui_modules::*;
+use crate::gui_modules::get_fault_severity;
 use rand;
 
 pub struct TelemetryGui {
@@ -243,6 +244,7 @@ impl Application for TelemetryGui {
                                         is_active: true,
                                         value: val.to_owned(),
                                         message_name: message_name.to_string(),
+                                        severity: get_fault_severity(message_name, signal),
                                     };
                                     self.active_faults.insert(fault_name.clone(), new_fault);
                                 } else {
@@ -646,6 +648,7 @@ impl TelemetryGui {
                 is_active: true,
                 value: value.to_owned(),
                 message_name: message_name.to_string(),
+                severity: get_fault_severity(message_name, signal_name),
             };
             self.active_faults.insert(fault_key, new_fault);
         } else {

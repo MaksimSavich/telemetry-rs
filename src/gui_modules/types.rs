@@ -5,6 +5,13 @@ use std::collections::HashMap;
 
 // Re-export common types and messages for all components
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum FaultSeverity {
+    Critical = 0, // Highest priority - most severe
+    Error = 1,    // Medium priority
+    Warning = 2,  // Lowest priority - least severe
+}
+
 #[derive(Clone, Debug)]
 pub struct Fault {
     pub name: String,
@@ -12,6 +19,7 @@ pub struct Fault {
     pub is_active: bool,
     pub value: String,
     pub message_name: String, // Added to track which CAN message this came from
+    pub severity: FaultSeverity, // New field for severity classification
 }
 
 // Message enum shared between all components
@@ -22,7 +30,7 @@ pub enum Message {
     Tick, // For updating time display
 }
 
-// Container styling helper
+// Container styling helpers for different fault severities
 pub fn create_error_container_style() -> iced::theme::Container {
     iced::theme::Container::Custom(Box::new(move |theme: &Theme| {
         let mut appearance = theme.appearance(&iced::theme::Container::Box);
@@ -32,35 +40,64 @@ pub fn create_error_container_style() -> iced::theme::Container {
     }))
 }
 
-// DTC fault definitions for BMS (existing - keep as is)
-pub const DTC_FLAGS_1_FAULTS: &[(u16, &str)] = &[
-    (0x0001, "Discharge Limit Enforcement"),
-    (0x0002, "Charger Safety Relay"),
-    (0x0004, "Internal Hardware"),
-    (0x0008, "Internal Heatsink Thermistor"),
-    (0x0010, "Internal Software"),
-    (0x0020, "Highest Cell Voltage Too High"),
-    (0x0040, "Lowest Cell Voltage Too Low"),
-    (0x0080, "Pack Too Hot"),
+pub fn create_warning_container_style() -> iced::theme::Container {
+    iced::theme::Container::Custom(Box::new(move |theme: &Theme| {
+        let mut appearance = theme.appearance(&iced::theme::Container::Box);
+        appearance.background = Some(Color::from_rgb(1.0, 0.8, 0.0).into()); // Yellow background
+        appearance.text_color = Some(Color::BLACK); // Black text for better readability on yellow
+        appearance
+    }))
+}
+
+pub fn create_critical_container_style() -> iced::theme::Container {
+    iced::theme::Container::Custom(Box::new(move |theme: &Theme| {
+        let mut appearance = theme.appearance(&iced::theme::Container::Box);
+        appearance.background = Some(Color::from_rgb(0.8, 0.0, 0.0).into()); // Dark red background
+        appearance.text_color = Some(Color::WHITE);
+        appearance.border.color = Color::from_rgb(1.0, 0.0, 0.0); // Bright red border
+        appearance.border.width = 2.0; // Thicker border for critical
+        appearance
+    }))
+}
+
+// Helper function to get container style based on fault severity
+pub fn get_fault_container_style(severity: &FaultSeverity) -> iced::theme::Container {
+    match severity {
+        FaultSeverity::Warning => create_warning_container_style(),
+        FaultSeverity::Error => create_error_container_style(),
+        FaultSeverity::Critical => create_critical_container_style(),
+    }
+}
+
+// DTC fault definitions for BMS with severity classification
+pub const DTC_FLAGS_1_FAULTS: &[(u16, &str, FaultSeverity)] = &[
+    (0x0001, "Discharge Limit Enforcement", FaultSeverity::Critical),
+    (0x0002, "Charger Safety Relay", FaultSeverity::Error),
+    (0x0004, "Internal Hardware", FaultSeverity::Critical),
+    (0x0008, "Internal Heatsink Thermistor", FaultSeverity::Error),
+    (0x0010, "Internal Software", FaultSeverity::Critical),
+    (0x0020, "Highest Cell Voltage Too High", FaultSeverity::Critical),
+    (0x0040, "Lowest Cell Voltage Too Low", FaultSeverity::Critical),
+    (0x0080, "Pack Too Hot", FaultSeverity::Critical),
 ];
 
-pub const DTC_FLAGS_2_FAULTS: &[(u16, &str)] = &[
-    (0x0001, "Internal Communication"),
-    (0x0002, "W: Cell Balancing Stuck Off"),
-    (0x0004, "W: Weak Cell"),
-    (0x0008, "Low Cell Voltage"),
-    (0x0010, "Open Wiring"),
-    (0x0020, "Current Sensor"),
-    (0x0040, "Highest Cell Voltage Over 5V"),
-    (0x0080, "Cell ASIC"),
-    (0x0100, "W: Weak Pack"),
-    (0x0200, "W: Fan Monitor"),
-    (0x0400, "Thermistor"),
-    (0x0800, "External Communication"),
-    (0x1000, "W: Redundant Power Supply"),
-    (0x2000, "High Voltage Isolation"),
-    (0x4000, "Input Power Supply"),
-    (0x8000, "Charge Limit Enforcement"),
+pub const DTC_FLAGS_2_FAULTS: &[(u16, &str, FaultSeverity)] = &[
+    (0x0001, "Internal Communication", FaultSeverity::Error),
+    (0x0002, "Cell Balancing Stuck Off", FaultSeverity::Warning),
+    (0x0004, "Weak Cell", FaultSeverity::Warning),
+    (0x0008, "Low Cell Voltage", FaultSeverity::Critical),
+    (0x0010, "Open Wiring", FaultSeverity::Critical),
+    (0x0020, "Current Sensor", FaultSeverity::Error),
+    (0x0040, "Highest Cell Voltage Over 5V", FaultSeverity::Critical),
+    (0x0080, "Cell ASIC", FaultSeverity::Critical),
+    (0x0100, "Weak Pack", FaultSeverity::Warning),
+    (0x0200, "Fan Monitor", FaultSeverity::Warning),
+    (0x0400, "Thermistor", FaultSeverity::Error),
+    (0x0800, "External Communication", FaultSeverity::Error),
+    (0x1000, "Redundant Power Supply", FaultSeverity::Warning),
+    (0x2000, "High Voltage Isolation", FaultSeverity::Critical),
+    (0x4000, "Input Power Supply", FaultSeverity::Error),
+    (0x8000, "Charge Limit Enforcement", FaultSeverity::Critical),
 ];
 
 // Configuration for GUI value updates using (message_name, signal_name) as key
@@ -282,5 +319,48 @@ pub fn is_fault_value(value: &str) -> bool {
         false
     } else {
         true
+    }
+}
+
+// Helper function to determine fault severity from DTC fault name
+pub fn get_dtc_fault_severity(fault_name: &str) -> FaultSeverity {
+    // Check DTC_FLAGS_1_FAULTS
+    for &(_, name, severity) in DTC_FLAGS_1_FAULTS.iter() {
+        if fault_name.contains(name) {
+            return severity;
+        }
+    }
+    
+    // Check DTC_FLAGS_2_FAULTS
+    for &(_, name, severity) in DTC_FLAGS_2_FAULTS.iter() {
+        if fault_name.contains(name) {
+            return severity;
+        }
+    }
+    
+    // Default severity for unknown DTC faults
+    FaultSeverity::Error
+}
+
+// Helper function to determine fault severity for non-DTC faults
+pub fn get_fault_severity(message_name: &str, signal_name: &str) -> FaultSeverity {
+    match message_name {
+        "BMS_DTC" => get_dtc_fault_severity(signal_name),
+        "MotorController_1" | "MotorController_2" => {
+            // Motor controller faults are typically critical
+            FaultSeverity::Critical
+        }
+        "BPS_System" => {
+            // BPS faults are safety-critical
+            match signal_name {
+                "BPS_BMS_CAN_Warning" => FaultSeverity::Warning,
+                _ => FaultSeverity::Critical,
+            }
+        }
+        "MPPT" => {
+            // MPPT faults are typically errors, not critical
+            FaultSeverity::Error
+        }
+        _ => FaultSeverity::Error, // Default for unknown message types
     }
 }
