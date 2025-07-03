@@ -17,7 +17,7 @@ const BATCH_TIMEOUT_MS: u64 = 10; // Faster timeout for lower latency
 const MIN_BATCH_SIZE: usize = 1; // Always send at least 1 frame
 
 // Radio configuration constants
-const RFD_BAUD_RATE: u32 = 115200; // Increased baud rate for faster transmission
+const RFD_BAUD_RATE: u32 = 57600; // RFD modem standard baud rate
 const CONNECTION_CHECK_INTERVAL_MS: u64 = 5000; // Faster connection checks
 const TRANSMISSION_TIMEOUT_MS: u64 = 50; // Reduced timeout for faster response
 const CONNECTION_GRACE_PERIOD_MS: u64 = 30000;
