@@ -206,8 +206,8 @@ impl Application for TelemetryGui {
                     _ => "Unknown",
                 };
 
-                // Don't clear DTC faults preemptively - only clear them when explicitly set to 0
-                // This ensures faults persist until the same message explicitly clears them
+                // Track DTC faults found in this message to clear stale ones
+                let mut dtc_faults_in_message = std::collections::HashSet::new();
 
                 // Process telemetry data using mapping system
                 for line in decoded_str.lines() {
@@ -233,6 +233,8 @@ impl Application for TelemetryGui {
                         if message_name == "BMS_DTC" {
                             if signal.starts_with("Fault_DTC") {
                                 let fault_name = signal.to_string();
+                                dtc_faults_in_message.insert(fault_name.clone());
+                                
                                 if !val.trim().is_empty()
                                     && val.trim() != "0"
                                     && val.trim() != "0.0"
@@ -252,6 +254,20 @@ impl Application for TelemetryGui {
                                     self.active_faults.remove(&fault_name);
                                 }
                             }
+                        }
+                    }
+                }
+
+                // Clear any DTC faults that weren't present in this BMS_DTC message
+                if message_name == "BMS_DTC" {
+                    let dtc_fault_keys: Vec<String> = self.active_faults.keys()
+                        .filter(|key| key.starts_with("Fault_DTC"))
+                        .cloned()
+                        .collect();
+                    
+                    for fault_key in dtc_fault_keys {
+                        if !dtc_faults_in_message.contains(&fault_key) {
+                            self.active_faults.remove(&fault_key);
                         }
                     }
                 }
