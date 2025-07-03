@@ -1,6 +1,6 @@
 // prost import removed - no longer using protobuf
 use serialport::{SerialPort, SerialPortType};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, VecDeque, BTreeMap};
 use std::io::{Read, Write};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -33,48 +33,101 @@ pub struct CanFrameData {
     pub id: u32,
     pub data: Vec<u8>,
     pub timestamp: Instant,
+    pub sequence_number: u64,
+    pub priority: MessagePriority,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum MessagePriority {
+    Critical = 0,  // Safety-critical messages (faults, emergency stops)
+    High = 1,      // Operational messages (motor control, BMS power)
+    Medium = 2,    // Status messages (temperatures, states)
+    Low = 3,       // Monitoring messages (limits, capacity)
+}
+
+static SEQUENCE_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 impl CanFrameData {
     pub fn new(id: u32, data: &[u8]) -> Self {
+        let sequence_number = SEQUENCE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         Self {
             id,
             data: data.to_vec(),
             timestamp: Instant::now(),
+            sequence_number,
+            priority: Self::get_priority_for_id(id),
         }
     }
 
-    // Enhanced serialization with validation
+    fn get_priority_for_id(id: u32) -> MessagePriority {
+        match id {
+            // Critical safety messages
+            0x300 => MessagePriority::Critical,  // BMS DTC flags
+            0x776 | 0x777 => MessagePriority::Critical,  // BPS System status
+            
+            // High priority operational messages
+            0x320 => MessagePriority::High,      // BMS Power data
+            0x0CF11E05 | 0x0CF11F05 => MessagePriority::High,  // Motor controller data
+            0x0CF11E06 | 0x0CF11F06 => MessagePriority::High,  // Motor controller data
+            
+            // Medium priority status messages
+            0x360 => MessagePriority::Medium,    // BMS Temperature
+            0x330 => MessagePriority::Medium,    // BMS State
+            
+            // Low priority monitoring messages
+            0x310 => MessagePriority::Low,       // BMS Limits
+            0x340 => MessagePriority::Low,       // BMS Capacity
+            0x200..=0x203 => MessagePriority::Low,  // MPPT data
+            
+            // Default to medium priority
+            _ => MessagePriority::Medium,
+        }
+    }
+
+    // Enhanced serialization with validation and sequence number
     pub fn to_bytes(&self) -> Vec<u8> {
         // Validate data length (CAN max is 8 bytes)
         let data_len = std::cmp::min(self.data.len(), 8);
 
-        let mut bytes = Vec::with_capacity(5 + data_len);
+        let mut bytes = Vec::with_capacity(13 + data_len);
         bytes.extend_from_slice(&self.id.to_be_bytes()); // 4 bytes ID (big-endian)
         bytes.push(data_len as u8); // 1 byte length
         bytes.extend_from_slice(&self.data[..data_len]); // data (validated length)
+        bytes.extend_from_slice(&self.sequence_number.to_be_bytes()); // 8 bytes sequence number
         bytes
     }
 
-    // Deserialize from bytes
+    // Deserialize from bytes with sequence number
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        if bytes.len() < 5 {
+        if bytes.len() < 13 {
             return None;
         }
 
         let id = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
         let data_len = bytes[4] as usize;
 
-        if bytes.len() < 5 + data_len || data_len > 8 {
+        if bytes.len() < 13 + data_len || data_len > 8 {
             return None;
         }
 
         let data = bytes[5..5 + data_len].to_vec();
+        let sequence_number = u64::from_be_bytes([
+            bytes[5 + data_len],
+            bytes[6 + data_len],
+            bytes[7 + data_len],
+            bytes[8 + data_len],
+            bytes[9 + data_len],
+            bytes[10 + data_len],
+            bytes[11 + data_len],
+            bytes[12 + data_len],
+        ]);
 
         Some(Self {
             id,
             data,
             timestamp: Instant::now(),
+            sequence_number,
+            priority: Self::get_priority_for_id(id),
         })
     }
 }
@@ -179,21 +232,30 @@ impl FrameFilter {
 }
 
 pub struct ImprovedFrameBatcher {
-    frames: VecDeque<CanFrameData>,
+    // Priority-based latest message storage: CAN ID -> (Frame, Priority)
+    latest_frames: HashMap<u32, CanFrameData>,
+    // Maintain insertion order for same-priority messages
+    frame_order: VecDeque<u32>,
     last_send: Instant,
     total_bytes: usize,
     frame_filter: FrameFilter,
     batch_count: u64,
+    // Statistics
+    total_frames_added: u64,
+    frames_replaced: u64,
 }
 
 impl ImprovedFrameBatcher {
     pub fn new() -> Self {
         Self {
-            frames: VecDeque::new(),
+            latest_frames: HashMap::new(),
+            frame_order: VecDeque::new(),
             last_send: Instant::now(),
             total_bytes: 0,
             frame_filter: FrameFilter::new(),
             batch_count: 0,
+            total_frames_added: 0,
+            frames_replaced: 0,
         }
     }
 
@@ -203,32 +265,55 @@ impl ImprovedFrameBatcher {
             return true; // Frame filtered out, but don't report as error
         }
 
-        let frame_size = 5 + std::cmp::min(frame.data.len(), 8);
-
-        // Check batch limits
-        if self.frames.len() >= MAX_BATCH_SIZE || self.total_bytes + frame_size > MAX_BATCH_BYTES {
+        let frame_size = 13 + std::cmp::min(frame.data.len(), 8); // Updated size with sequence number
+        let can_id = frame.id;
+        
+        self.total_frames_added += 1;
+        
+        // Check if we already have this message ID
+        if let Some(existing_frame) = self.latest_frames.get(&can_id) {
+            // Replace with newer message (higher sequence number or more recent timestamp)
+            if frame.sequence_number > existing_frame.sequence_number || 
+               (frame.sequence_number == existing_frame.sequence_number && frame.timestamp > existing_frame.timestamp) {
+                self.latest_frames.insert(can_id, frame);
+                self.frames_replaced += 1;
+                println!("Replaced message 0x{:X} with newer version (seq: {} -> {})", 
+                         can_id, existing_frame.sequence_number, frame.sequence_number);
+            }
+            return true; // Always succeed when replacing
+        }
+        
+        // Check batch limits for new messages
+        if self.latest_frames.len() >= MAX_BATCH_SIZE || self.get_total_bytes() + frame_size > MAX_BATCH_BYTES {
             return false; // Batch is full
         }
 
-        self.total_bytes += frame_size;
-        self.frames.push_back(frame);
+        // Add new message
+        self.latest_frames.insert(can_id, frame);
+        self.frame_order.push_back(can_id);
         true
     }
 
     pub fn should_send(&self) -> bool {
-        if self.frames.is_empty() {
+        if self.latest_frames.is_empty() {
             return false;
         }
 
         // Send conditions
-        self.frames.len() >= MAX_BATCH_SIZE
-            || self.total_bytes >= MAX_BATCH_BYTES
-            || (self.frames.len() >= MIN_BATCH_SIZE
+        self.latest_frames.len() >= MAX_BATCH_SIZE
+            || self.get_total_bytes() >= MAX_BATCH_BYTES
+            || (self.latest_frames.len() >= MIN_BATCH_SIZE
                 && self.last_send.elapsed().as_millis() >= BATCH_TIMEOUT_MS as u128)
+    }
+    
+    fn get_total_bytes(&self) -> usize {
+        self.latest_frames.values()
+            .map(|frame| 13 + std::cmp::min(frame.data.len(), 8))
+            .sum()
     }
 
     pub fn create_batch(&mut self) -> Vec<u8> {
-        if self.frames.is_empty() {
+        if self.latest_frames.is_empty() {
             return Vec::new();
         }
 
@@ -237,21 +322,26 @@ impl ImprovedFrameBatcher {
         // Add start marker for synchronization
         batch.extend_from_slice(BATCH_START_MARKER);
 
-        // Add frame count (2 bytes, big-endian)
-        let frame_count = std::cmp::min(self.frames.len(), MAX_BATCH_SIZE);
+        // Collect frames and sort by priority (critical first, then by timestamp)
+        let mut frames_to_send: Vec<_> = self.latest_frames.values().cloned().collect();
+        frames_to_send.sort_by(|a, b| {
+            // First sort by priority (critical messages first)
+            match a.priority.cmp(&b.priority) {
+                std::cmp::Ordering::Equal => {
+                    // Within same priority, prefer more recent messages
+                    b.timestamp.cmp(&a.timestamp)
+                }
+                other => other,
+            }
+        });
+
+        // Limit to batch size
+        let frame_count = std::cmp::min(frames_to_send.len(), MAX_BATCH_SIZE);
         batch.extend_from_slice(&(frame_count as u16).to_be_bytes());
 
-        // Add frames
+        // Add frames (priority-ordered)
         let mut actual_count = 0;
-        let batch_data_start = batch.len();
-
-        while let Some(frame) = self.frames.pop_front() {
-            if actual_count >= frame_count {
-                // Put frame back if we exceeded count
-                self.frames.push_front(frame);
-                break;
-            }
-
+        for frame in frames_to_send.iter().take(frame_count) {
             let frame_bytes = frame.to_bytes();
             batch.extend_from_slice(&frame_bytes);
             actual_count += 1;
@@ -274,25 +364,37 @@ impl ImprovedFrameBatcher {
             .fold(0u16, |acc, &b| acc.wrapping_add(b as u16));
         batch.extend_from_slice(&checksum.to_be_bytes());
 
+        // Clear sent frames
+        self.latest_frames.clear();
+        self.frame_order.clear();
         self.total_bytes = 0;
         self.last_send = Instant::now();
         self.batch_count += 1;
 
         println!(
-            "Created batch #{}: {} frames, {} bytes total",
+            "Created priority batch #{}: {} frames, {} bytes total (replaced: {})",
             self.batch_count,
             actual_count,
-            batch.len()
+            batch.len(),
+            self.frames_replaced
         );
+        
+        // Reset replacement counter
+        self.frames_replaced = 0;
+        
         batch
     }
 
     pub fn is_empty(&self) -> bool {
-        self.frames.is_empty()
+        self.latest_frames.is_empty()
     }
 
     pub fn get_queue_size(&self) -> usize {
-        self.frames.len()
+        self.latest_frames.len()
+    }
+    
+    pub fn get_stats(&self) -> (u64, u64, usize) {
+        (self.total_frames_added, self.frames_replaced, self.latest_frames.len())
     }
 }
 
