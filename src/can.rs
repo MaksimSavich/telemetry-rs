@@ -131,10 +131,9 @@ impl CanDecoder {
             }
         }
 
-        if result.is_empty() {
-            result.push_str("DTC_Flags_1: 0\nDTC_Flags_2: 0\n");
-        }
-
+        // Don't output zero-value DTC signals when no faults are active
+        // This prevents false positive fault detection from "DTC_Flags_1: 0" signals
+        
         result
     }
 
