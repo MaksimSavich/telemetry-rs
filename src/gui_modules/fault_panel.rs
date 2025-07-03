@@ -41,7 +41,7 @@ pub fn fault_display(
             .width(Length::Fill)
             .padding(5)
             .style(iced::theme::Container::Box);
-            
+
         return column![
             header,
             container(
@@ -71,7 +71,10 @@ pub fn fault_display(
     });
 
     // Determine the most severe fault level for header styling
-    let most_severe = faults_vec.first().map(|f| &f.severity).unwrap_or(&FaultSeverity::Error);
+    let most_severe = faults_vec
+        .first()
+        .map(|f| &f.severity)
+        .unwrap_or(&FaultSeverity::Error);
 
     // Calculate the range of faults to display for current page
     let start_index = current_page * FAULTS_PER_PAGE;
@@ -117,7 +120,7 @@ pub fn fault_display(
                 }))
             }
         };
-        
+
         let fault_row = container(
             row![
                 // Timestamp
@@ -137,7 +140,8 @@ pub fn fault_display(
                         &fault.name
                     ))
                     .size(12)
-                ).width(Length::FillPortion(2)),
+                )
+                .width(Length::FillPortion(2)),
                 // Value
                 container(text(&fault.value).size(12)).width(Length::FillPortion(1)),
             ]
