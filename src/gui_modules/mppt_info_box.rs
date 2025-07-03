@@ -74,15 +74,16 @@ pub fn mppt_info_box(data: &MpptData, bps_data: &BpsData) -> Element<'static, Me
                 .spacing(4)
                 .align_items(Alignment::Start)
                 .width(Length::FillPortion(1)),
-                column![
-                    text("BPS Info").size(20),
-                    text(format!("Time On: {:.1} Seconds", bps_data.ontime)),
-                    text(format!("BPS State: {}", bps_data.state)),
-                ]
-                .spacing(5)
-                .align_items(Alignment::Start),
             ]
-            .spacing(10)
+            .spacing(10),
+            row![column![
+                text("------------").size(20),
+                text(format!("Time On: {:.1} Seconds", bps_data.ontime)),
+                text(format!("BPS State: {}", bps_data.state)),
+            ]
+            .spacing(5)
+            .align_items(Alignment::Start),]
+            .spacing(10),
         ]
         .spacing(8)
         .align_items(Alignment::Start),

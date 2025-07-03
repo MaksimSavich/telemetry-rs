@@ -205,11 +205,8 @@ impl Application for TelemetryGui {
                     _ => "Unknown",
                 };
 
-                // Clear existing DTC faults when processing new DTC message
-                if message_name == "BMS_DTC" {
-                    self.active_faults
-                        .retain(|name, _| !name.starts_with("Fault_DTC"));
-                }
+                // Don't clear DTC faults preemptively - only clear them when explicitly set to 0
+                // This ensures faults persist until the same message explicitly clears them
 
                 // Process telemetry data using mapping system
                 for line in decoded_str.lines() {
@@ -248,6 +245,9 @@ impl Application for TelemetryGui {
                                         message_name: message_name.to_string(),
                                     };
                                     self.active_faults.insert(fault_name.clone(), new_fault);
+                                } else {
+                                    // DTC fault is explicitly cleared (value is 0 or empty)
+                                    self.active_faults.remove(&fault_name);
                                 }
                             }
                         }
@@ -345,7 +345,6 @@ impl Application for TelemetryGui {
             mppt_info,
             speed_direction,
             battery_info,
-            mppt_info,
             fault_display,
             time_display,
             warning_indicator,
