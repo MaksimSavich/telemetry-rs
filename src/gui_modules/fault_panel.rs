@@ -1,5 +1,5 @@
 use crate::gui_modules::{create_error_container_style, Fault, Message};
-use iced::widget::container::{Appearance, StyleSheet};
+use iced::widget::container::StyleSheet;
 use iced::widget::{column, container, row, text, Space};
 use iced::{Alignment, Color, Element, Length};
 use std::collections::HashMap;
@@ -119,7 +119,7 @@ pub fn fault_display(
 
     // Add empty rows to maintain consistent height (always show space for 5 rows)
     let empty_rows_needed = FAULTS_PER_PAGE - current_page_faults.len();
-    for i in 0..empty_rows_needed {
+    for _i in 0..empty_rows_needed {
         let empty_row = container(
             row![
                 Space::with_width(Length::FillPortion(1)),

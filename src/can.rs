@@ -1,7 +1,7 @@
 // Fixed src/can.rs - Updated CAN signal extraction with proper signed/unsigned handling
 
 use crate::gui_modules::{DTC_FLAGS_1_FAULTS, DTC_FLAGS_2_FAULTS};
-use can_dbc::{Signal, ValueDescription, DBC};
+use can_dbc::{Signal, DBC};
 use socketcan::{CanFrame, EmbeddedFrame};
 use std::fs;
 
@@ -200,7 +200,7 @@ impl CanDecoder {
         // But if max <= 32767 and we see values > 32767 in practice, it's signed
         let signal_size = *signal.signal_size() as u32;
         if signal_size <= 32 {
-            let max_signed = (1i64 << (signal_size - 1)) - 1;
+            let _max_signed = (1i64 << (signal_size - 1)) - 1;
             let max_unsigned = (1u64 << signal_size) - 1;
 
             // If the max value is set and it's less than half the unsigned range,

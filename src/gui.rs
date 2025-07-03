@@ -57,7 +57,7 @@ pub struct TelemetryGui {
     // System components
     decoder: CanDecoder,
     logger: Option<CanLogger>,
-    theme: Theme,
+    _theme: Theme,
     serial_manager: SerialManager,
 
     // Radio status
@@ -125,9 +125,9 @@ impl Application for TelemetryGui {
                 // Initialize fault cycling state - faster cycling
                 fault_page_index: 0,
                 fault_cycle_timer: 0,
-                fault_cycle_interval: 15, // 3 seconds at 200ms per tick
+                fault_cycle_interval: 20, // 2 seconds at 100ms per tick - faster cycling
 
-                theme: iced::Theme::Dark,
+                _theme: iced::Theme::Dark,
                 decoder: CanDecoder::new("telemetry.dbc"),
                 logger,
                 serial_manager,
@@ -397,19 +397,19 @@ impl Application for TelemetryGui {
                             }
                             Err(e) => {
                                 if e.kind() == std::io::ErrorKind::WouldBlock {
-                                    // No data available, sleep very briefly for responsiveness
-                                    tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+                                    // No data available, yield to scheduler briefly for maximum responsiveness
+                                    tokio::task::yield_now().await;
                                 } else {
                                     eprintln!("CAN read error: {}", e);
-                                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
                                 }
                             }
                         }
                     }
                 })
             },
-            // Timer for updating time and checking connections - faster refresh
-            time::every(std::time::Duration::from_millis(200)).map(|_| Message::Tick),
+            // Timer for updating time and checking connections - optimized refresh
+            time::every(std::time::Duration::from_millis(100)).map(|_| Message::Tick),
         ])
     }
 }
@@ -657,7 +657,7 @@ impl TelemetryGui {
     fn update_vehicle_speed(&mut self) {
         // Check data freshness (optional - helps with stale data)
         let now = std::time::Instant::now();
-        let max_age = std::time::Duration::from_millis(500); // 500ms max age
+        let max_age = std::time::Duration::from_millis(250); // 250ms max age for more responsive updates
 
         let motor1_fresh = self
             .motor1_last_update
@@ -681,7 +681,7 @@ impl TelemetryGui {
     }
 
     fn calculate_dual_motor_speed(&self, motor1_rpm: f64, motor2_rpm: f64) -> f64 {
-        let min_threshold = 10.0; // Filter noise below 10 RPM
+        let min_threshold = 5.0; // Lower threshold for more sensitive speed detection
         let wheel_diameter = 23.5; // Make this configurable later
 
         // Filter out noise

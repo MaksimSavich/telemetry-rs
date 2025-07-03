@@ -1,7 +1,7 @@
 use crate::gui_modules::Message;
 use iced::widget::container::StyleSheet;
-use iced::widget::{container, row, text};
-use iced::{Alignment, Color, Element, Length};
+use iced::widget::{container, text};
+use iced::{Color, Element, Length};
 
 pub fn radio_status_indicators(
     rfd_connected: bool,

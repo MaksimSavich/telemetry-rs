@@ -1,7 +1,7 @@
 // prost import removed - no longer using protobuf
 use serialport::{SerialPort, SerialPortType};
-use std::collections::{HashMap, VecDeque, BTreeMap};
-use std::io::{Read, Write};
+use std::collections::{HashMap, VecDeque};
+use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
@@ -11,15 +11,15 @@ use std::time::{Duration, Instant};
 // Enhanced batching configuration with synchronization
 const BATCH_START_MARKER: &[u8] = b"\xAA\xBB\xCC\xDD"; // 4-byte start marker
 const BATCH_END_MARKER: &[u8] = b"\xEE\xFF\x00\x11"; // 4-byte end marker
-const MAX_BATCH_SIZE: usize = 8; // Smaller batches = better reliability
-const MAX_BATCH_BYTES: usize = 100; // Conservative byte limit
-const BATCH_TIMEOUT_MS: u64 = 20; // Longer timeout for stability
+const MAX_BATCH_SIZE: usize = 12; // Optimized batch size for speed
+const MAX_BATCH_BYTES: usize = 150; // Increased byte limit for efficiency
+const BATCH_TIMEOUT_MS: u64 = 10; // Faster timeout for lower latency
 const MIN_BATCH_SIZE: usize = 1; // Always send at least 1 frame
 
 // Radio configuration constants
-const RFD_BAUD_RATE: u32 = 57600;
-const CONNECTION_CHECK_INTERVAL_MS: u64 = 10000;
-const TRANSMISSION_TIMEOUT_MS: u64 = 100;
+const RFD_BAUD_RATE: u32 = 115200; // Increased baud rate for faster transmission
+const CONNECTION_CHECK_INTERVAL_MS: u64 = 5000; // Faster connection checks
+const TRANSMISSION_TIMEOUT_MS: u64 = 50; // Reduced timeout for faster response
 const CONNECTION_GRACE_PERIOD_MS: u64 = 30000;
 const RFD_SCAN_INTERVAL_MS: u64 = 5000;
 
@@ -145,61 +145,61 @@ impl FrameFilter {
             min_intervals: HashMap::new(),
         };
 
-        // Set minimum transmission intervals to reduce spam
+        // Optimized transmission intervals for speed vs reliability
         filter
             .min_intervals
-            .insert(0x300, Duration::from_millis(100)); // DTC flags - max 10 Hz
+            .insert(0x300, Duration::from_millis(50)); // DTC flags - critical, faster
         filter
             .min_intervals
-            .insert(0x320, Duration::from_millis(50)); // BMS Power - max 20 Hz
+            .insert(0x320, Duration::from_millis(25)); // BMS Power - critical, very fast
         filter
             .min_intervals
-            .insert(0x360, Duration::from_millis(50)); // BMS Temp - max 20 Hz
+            .insert(0x360, Duration::from_millis(30)); // BMS Temp - faster
         filter
             .min_intervals
-            .insert(0x310, Duration::from_millis(2000)); // BMS Limits - max 0.5 Hz
+            .insert(0x310, Duration::from_millis(100)); // BMS Limits - much faster
         filter
             .min_intervals
-            .insert(0x330, Duration::from_millis(1000)); // BMS State - max 1 Hz
+            .insert(0x330, Duration::from_millis(50)); // BMS State - faster
         filter
             .min_intervals
-            .insert(0x340, Duration::from_millis(1000)); // BMS Capacity - max 1 Hz
+            .insert(0x340, Duration::from_millis(200)); // BMS Capacity - faster
 
-        // Motor controllers - respect their 50ms intervals from DBC
+        // Motor controllers - optimized for faster response
         filter
             .min_intervals
-            .insert(0x0CF11E05, Duration::from_millis(50));
+            .insert(0x0CF11E05, Duration::from_millis(30)); // Motor 1 - faster
         filter
             .min_intervals
-            .insert(0x0CF11F05, Duration::from_millis(50));
+            .insert(0x0CF11F05, Duration::from_millis(30)); // Motor 1 - faster
         filter
             .min_intervals
-            .insert(0x0CF11E06, Duration::from_millis(50));
+            .insert(0x0CF11E06, Duration::from_millis(30)); // Motor 2 - faster
         filter
             .min_intervals
-            .insert(0x0CF11F06, Duration::from_millis(50));
+            .insert(0x0CF11F06, Duration::from_millis(30)); // Motor 2 - faster
 
-        // MPPT - 500ms and 1000ms from DBC
+        // MPPT - optimized for faster solar monitoring
         filter
             .min_intervals
-            .insert(0x200, Duration::from_millis(500));
+            .insert(0x200, Duration::from_millis(250)); // MPPT1 - faster
         filter
             .min_intervals
-            .insert(0x201, Duration::from_millis(1000));
+            .insert(0x201, Duration::from_millis(500)); // MPPT1 - faster
         filter
             .min_intervals
-            .insert(0x202, Duration::from_millis(500));
+            .insert(0x202, Duration::from_millis(250)); // MPPT2 - faster
         filter
             .min_intervals
-            .insert(0x203, Duration::from_millis(1000));
+            .insert(0x203, Duration::from_millis(500)); // MPPT2 - faster
 
-        // BPS - 100ms from DBC
+        // BPS - faster for critical safety systems
         filter
             .min_intervals
-            .insert(0x776, Duration::from_millis(100));
+            .insert(0x776, Duration::from_millis(50)); // BPS critical - faster
         filter
             .min_intervals
-            .insert(0x777, Duration::from_millis(100));
+            .insert(0x777, Duration::from_millis(50)); // BPS status - faster
 
         filter
     }
@@ -216,8 +216,14 @@ impl FrameFilter {
                 }
             }
         } else {
-            // Default minimum interval for unknown messages
-            let default_interval = Duration::from_millis(10);
+            // Adaptive default interval based on message priority
+            let default_interval = match frame.priority {
+                MessagePriority::Critical => Duration::from_millis(5),   // Critical messages - very fast
+                MessagePriority::High => Duration::from_millis(15),     // High priority - fast
+                MessagePriority::Medium => Duration::from_millis(50),   // Medium priority - moderate
+                MessagePriority::Low => Duration::from_millis(100),     // Low priority - slower
+            };
+            
             if let Some(last_time) = self.last_transmission.get(&can_id) {
                 if now.duration_since(*last_time) < default_interval {
                     return false;
@@ -272,13 +278,15 @@ impl ImprovedFrameBatcher {
         
         // Check if we already have this message ID
         if let Some(existing_frame) = self.latest_frames.get(&can_id) {
+            let old_seq = existing_frame.sequence_number;
+            let new_seq = frame.sequence_number;
             // Replace with newer message (higher sequence number or more recent timestamp)
-            if frame.sequence_number > existing_frame.sequence_number || 
-               (frame.sequence_number == existing_frame.sequence_number && frame.timestamp > existing_frame.timestamp) {
+            if new_seq > old_seq || 
+               (new_seq == old_seq && frame.timestamp > existing_frame.timestamp) {
                 self.latest_frames.insert(can_id, frame);
                 self.frames_replaced += 1;
                 println!("Replaced message 0x{:X} with newer version (seq: {} -> {})", 
-                         can_id, existing_frame.sequence_number, frame.sequence_number);
+                         can_id, old_seq, new_seq);
             }
             return true; // Always succeed when replacing
         }

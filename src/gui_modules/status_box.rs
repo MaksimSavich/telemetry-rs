@@ -1,6 +1,6 @@
 use crate::gui_modules::Message;
 use iced::widget::container::StyleSheet;
-use iced::widget::{column, container, row, text};
+use iced::widget::{column, container, text};
 use iced::{Alignment, Color, Element, Length};
 
 pub fn can_status_indicator(can_connected: bool) -> Element<'static, Message> {
