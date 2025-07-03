@@ -6,7 +6,7 @@ pub fn main_layout<'a>(
     is_fullscreen: bool,
     can_status: Element<'a, Message>,
     radio_status: Element<'a, Message>,
-    bms_info: Element<'a, Message>,
+    bms_info: &Element<'a, Message>,
     speed_direction: Element<'a, Message>,
     battery_info: Element<'a, Message>,
     bps_info: Element<'a, Message>,
