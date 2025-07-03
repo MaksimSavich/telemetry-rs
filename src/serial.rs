@@ -5,10 +5,15 @@ use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
-use cobs;
 use crc32fast::Hasher;
 
 // Proto imports removed - no longer using LoRa protocol
+
+// Robust framing protocol - no external dependencies, handles edge cases
+const FRAME_START: &[u8] = b"\xAA\xBB\xCC\xDD"; // 4-byte start marker
+const FRAME_END: &[u8] = b"\xEE\xFF\x00\x11";   // 4-byte end marker
+const ESCAPE_BYTE: u8 = 0x7D;                    // Escape byte for data
+const ESCAPE_XOR: u8 = 0x20;                     // XOR value for escaping
 
 // Enhanced batching configuration - conservative settings for reliability
 const MAX_BATCH_SIZE: usize = 4; // Much smaller batches for serial reliability
@@ -46,6 +51,44 @@ pub enum MessagePriority {
 }
 
 static SEQUENCE_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+// Robust framing utilities
+fn escape_data(data: &[u8]) -> Vec<u8> {
+    let mut escaped = Vec::with_capacity(data.len() * 2); // Pre-allocate for worst case
+    
+    for &byte in data {
+        if byte == FRAME_START[0] || byte == FRAME_START[1] || byte == FRAME_START[2] || byte == FRAME_START[3] ||
+           byte == FRAME_END[0] || byte == FRAME_END[1] || byte == FRAME_END[2] || byte == FRAME_END[3] ||
+           byte == ESCAPE_BYTE {
+            escaped.push(ESCAPE_BYTE);
+            escaped.push(byte ^ ESCAPE_XOR);
+        } else {
+            escaped.push(byte);
+        }
+    }
+    
+    escaped
+}
+
+fn unescape_data(data: &[u8]) -> Result<Vec<u8>, &'static str> {
+    let mut unescaped = Vec::with_capacity(data.len());
+    let mut i = 0;
+    
+    while i < data.len() {
+        if data[i] == ESCAPE_BYTE {
+            if i + 1 >= data.len() {
+                return Err("Incomplete escape sequence");
+            }
+            unescaped.push(data[i + 1] ^ ESCAPE_XOR);
+            i += 2;
+        } else {
+            unescaped.push(data[i]);
+            i += 1;
+        }
+    }
+    
+    Ok(unescaped)
+}
 
 impl CanFrameData {
     pub fn new(id: u32, data: &[u8]) -> Self {
@@ -385,16 +428,18 @@ impl ImprovedFrameBatcher {
         let crc = hasher.finalize();
         payload.extend_from_slice(&crc.to_be_bytes());
 
-        // COBS encode the payload (this eliminates the need for start/end markers)
-        let mut encoded = Vec::new();
-        let encode_result = cobs::encode(&payload, &mut encoded);
-        if encode_result > 0 {
-            // Add zero delimiter for COBS framing
-            encoded.push(0);
-        } else {
-            println!("COBS encoding failed, falling back to raw payload");
-            return payload;
-        }
+        // Frame the payload with start/end markers and escaping
+        let mut framed = Vec::new();
+        
+        // Add start marker
+        framed.extend_from_slice(FRAME_START);
+        
+        // Escape and add the payload
+        let escaped_payload = escape_data(&payload);
+        framed.extend_from_slice(&escaped_payload);
+        
+        // Add end marker
+        framed.extend_from_slice(FRAME_END);
 
         // Clear sent frames
         self.latest_frames.clear();
@@ -404,17 +449,17 @@ impl ImprovedFrameBatcher {
         self.batch_count += 1;
 
         println!(
-            "Created COBS batch #{}: {} frames, {} bytes encoded (replaced: {})",
+            "Created framed batch #{}: {} frames, {} bytes total (replaced: {})",
             self.batch_count,
             actual_count,
-            encoded.len(),
+            framed.len(),
             self.frames_replaced
         );
         
         // Reset replacement counter
         self.frames_replaced = 0;
         
-        encoded
+        framed
     }
 
     pub fn is_empty(&self) -> bool {
@@ -1038,47 +1083,54 @@ impl Clone for SerialManager {
     }
 }
 
-// Utility functions for parsing received COBS-encoded batches
+// Utility functions for parsing received framed batches
 pub fn parse_can_batch(batch_data: &[u8]) -> Vec<CanFrameData> {
     let mut frames = Vec::new();
 
-    if batch_data.len() < 3 {
-        return frames; // Need at least frame count + CRC
+    if batch_data.len() < FRAME_START.len() + FRAME_END.len() + 6 {
+        return frames; // Too small for valid frame
     }
 
-    // First, COBS decode the data (remove zero delimiter if present)
-    let data_to_decode = if batch_data.ends_with(&[0]) {
-        &batch_data[..batch_data.len()-1]
-    } else {
-        batch_data
-    };
+    // Check for start marker
+    if &batch_data[0..FRAME_START.len()] != FRAME_START {
+        println!("Invalid start marker in batch");
+        return frames;
+    }
 
-    let mut decoded = Vec::new();
-    match cobs::decode(data_to_decode, &mut decoded) {
-        Ok(_) => {
-            // Successfully decoded
-        }
-        Err(_) => {
-            println!("COBS decoding failed");
+    // Find end marker
+    let end_marker_pos = batch_data.len().saturating_sub(FRAME_END.len());
+    if &batch_data[end_marker_pos..] != FRAME_END {
+        println!("Invalid end marker in batch");
+        return frames;
+    }
+
+    // Extract the escaped payload (between markers)
+    let escaped_payload = &batch_data[FRAME_START.len()..end_marker_pos];
+    
+    // Unescape the payload
+    let payload = match unescape_data(escaped_payload) {
+        Ok(data) => data,
+        Err(e) => {
+            println!("Unescape failed: {}", e);
             return frames;
         }
-    }
+    };
 
-    if decoded.len() < 6 {
+    if payload.len() < 6 {
         return frames; // Need at least frame count (2) + CRC (4)
     }
 
     // Verify CRC32 of the payload (exclude the last 4 CRC bytes)
-    let payload_len = decoded.len() - 4;
+    let payload_len = payload.len() - 4;
     let mut hasher = Hasher::new();
-    hasher.update(&decoded[..payload_len]);
+    hasher.update(&payload[..payload_len]);
     let expected_crc = hasher.finalize();
     
     let actual_crc = u32::from_be_bytes([
-        decoded[payload_len],
-        decoded[payload_len + 1],
-        decoded[payload_len + 2],
-        decoded[payload_len + 3],
+        payload[payload_len],
+        payload[payload_len + 1],
+        payload[payload_len + 2],
+        payload[payload_len + 3],
     ]);
     
     if actual_crc != expected_crc {
@@ -1087,7 +1139,7 @@ pub fn parse_can_batch(batch_data: &[u8]) -> Vec<CanFrameData> {
         return frames;
     }
 
-    let frame_count = u16::from_be_bytes([decoded[0], decoded[1]]) as usize;
+    let frame_count = u16::from_be_bytes([payload[0], payload[1]]) as usize;
     let mut offset = 2; // Skip frame count
 
     for _ in 0..frame_count {
@@ -1096,7 +1148,7 @@ pub fn parse_can_batch(batch_data: &[u8]) -> Vec<CanFrameData> {
         }
 
         // Find the end of this frame (17 + data_len bytes with CRC32)
-        if let Some(frame) = CanFrameData::from_bytes(&decoded[offset..payload_len]) {
+        if let Some(frame) = CanFrameData::from_bytes(&payload[offset..payload_len]) {
             let frame_size = 17 + frame.data.len(); // Updated for CRC32 format
             frames.push(frame);
             offset += frame_size;
