@@ -503,6 +503,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "cobs"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "67ba02a97a2bd10f4b59b25c7973101c79642302776489e030cd13cdab09ed15"
+
+[[package]]
 name = "codespan-reporting"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2894,6 +2900,8 @@ dependencies = [
  "can-dbc",
  "chrono",
  "clap",
+ "cobs",
+ "crc32fast",
  "futures",
  "iced",
  "rand 0.9.1",

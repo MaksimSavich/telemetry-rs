@@ -5,21 +5,21 @@ use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
+use cobs;
+use crc32fast::Hasher;
 
 // Proto imports removed - no longer using LoRa protocol
 
-// Enhanced batching configuration with synchronization
-const BATCH_START_MARKER: &[u8] = b"\xAA\xBB\xCC\xDD"; // 4-byte start marker
-const BATCH_END_MARKER: &[u8] = b"\xEE\xFF\x00\x11"; // 4-byte end marker
-const MAX_BATCH_SIZE: usize = 12; // Optimized batch size for speed
-const MAX_BATCH_BYTES: usize = 150; // Increased byte limit for efficiency
-const BATCH_TIMEOUT_MS: u64 = 10; // Faster timeout for lower latency
+// Enhanced batching configuration - conservative settings for reliability
+const MAX_BATCH_SIZE: usize = 4; // Much smaller batches for serial reliability
+const MAX_BATCH_BYTES: usize = 60; // Very conservative byte limit
+const BATCH_TIMEOUT_MS: u64 = 50; // Longer timeout for stability
 const MIN_BATCH_SIZE: usize = 1; // Always send at least 1 frame
 
 // Radio configuration constants
 const RFD_BAUD_RATE: u32 = 57600; // RFD modem standard baud rate
-const CONNECTION_CHECK_INTERVAL_MS: u64 = 5000; // Faster connection checks
-const TRANSMISSION_TIMEOUT_MS: u64 = 50; // Reduced timeout for faster response
+const CONNECTION_CHECK_INTERVAL_MS: u64 = 10000; // Slower connection checks
+const TRANSMISSION_TIMEOUT_MS: u64 = 200; // Much longer timeout for reliability
 const CONNECTION_GRACE_PERIOD_MS: u64 = 30000;
 const RFD_SCAN_INTERVAL_MS: u64 = 5000;
 
@@ -84,29 +84,36 @@ impl CanFrameData {
         }
     }
 
-    // Enhanced serialization with validation and sequence number
+    // Enhanced serialization with CRC32 validation and sequence number
     pub fn to_bytes(&self) -> Vec<u8> {
         // Validate data length (CAN max is 8 bytes)
         let data_len = std::cmp::min(self.data.len(), 8);
 
-        let mut bytes = Vec::with_capacity(13 + data_len);
+        let mut bytes = Vec::with_capacity(17 + data_len);
         bytes.extend_from_slice(&self.id.to_be_bytes()); // 4 bytes ID (big-endian)
         bytes.push(data_len as u8); // 1 byte length
         bytes.extend_from_slice(&self.data[..data_len]); // data (validated length)
         bytes.extend_from_slice(&self.sequence_number.to_be_bytes()); // 8 bytes sequence number
+        
+        // Calculate CRC32 of the payload
+        let mut hasher = Hasher::new();
+        hasher.update(&bytes);
+        let crc = hasher.finalize();
+        bytes.extend_from_slice(&crc.to_be_bytes()); // 4 bytes CRC32
+        
         bytes
     }
 
-    // Deserialize from bytes with sequence number
+    // Deserialize from bytes with CRC32 validation and sequence number
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
-        if bytes.len() < 13 {
+        if bytes.len() < 17 {
             return None;
         }
 
         let id = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
         let data_len = bytes[4] as usize;
 
-        if bytes.len() < 13 + data_len || data_len > 8 {
+        if bytes.len() < 17 + data_len || data_len > 8 {
             return None;
         }
 
@@ -121,6 +128,24 @@ impl CanFrameData {
             bytes[11 + data_len],
             bytes[12 + data_len],
         ]);
+        
+        // Verify CRC32
+        let expected_crc = u32::from_be_bytes([
+            bytes[13 + data_len],
+            bytes[14 + data_len],
+            bytes[15 + data_len],
+            bytes[16 + data_len],
+        ]);
+        
+        let mut hasher = Hasher::new();
+        hasher.update(&bytes[..13 + data_len]);
+        let actual_crc = hasher.finalize();
+        
+        if actual_crc != expected_crc {
+            println!("CRC32 validation failed for CAN ID 0x{:X}: expected 0x{:X}, got 0x{:X}", 
+                     id, expected_crc, actual_crc);
+            return None;
+        }
 
         Some(Self {
             id,
@@ -145,61 +170,61 @@ impl FrameFilter {
             min_intervals: HashMap::new(),
         };
 
-        // Optimized transmission intervals for speed vs reliability
+        // Conservative transmission intervals for reliability (reverted)
         filter
             .min_intervals
-            .insert(0x300, Duration::from_millis(50)); // DTC flags - critical, faster
+            .insert(0x300, Duration::from_millis(100)); // DTC flags - max 10 Hz
         filter
             .min_intervals
-            .insert(0x320, Duration::from_millis(25)); // BMS Power - critical, very fast
+            .insert(0x320, Duration::from_millis(50)); // BMS Power - max 20 Hz
         filter
             .min_intervals
-            .insert(0x360, Duration::from_millis(30)); // BMS Temp - faster
+            .insert(0x360, Duration::from_millis(50)); // BMS Temp - max 20 Hz
         filter
             .min_intervals
-            .insert(0x310, Duration::from_millis(100)); // BMS Limits - much faster
+            .insert(0x310, Duration::from_millis(2000)); // BMS Limits - max 0.5 Hz
         filter
             .min_intervals
-            .insert(0x330, Duration::from_millis(50)); // BMS State - faster
+            .insert(0x330, Duration::from_millis(1000)); // BMS State - max 1 Hz
         filter
             .min_intervals
-            .insert(0x340, Duration::from_millis(200)); // BMS Capacity - faster
+            .insert(0x340, Duration::from_millis(1000)); // BMS Capacity - max 1 Hz
 
-        // Motor controllers - optimized for faster response
+        // Motor controllers - respect their 50ms intervals from DBC
         filter
             .min_intervals
-            .insert(0x0CF11E05, Duration::from_millis(30)); // Motor 1 - faster
+            .insert(0x0CF11E05, Duration::from_millis(50));
         filter
             .min_intervals
-            .insert(0x0CF11F05, Duration::from_millis(30)); // Motor 1 - faster
+            .insert(0x0CF11F05, Duration::from_millis(50));
         filter
             .min_intervals
-            .insert(0x0CF11E06, Duration::from_millis(30)); // Motor 2 - faster
+            .insert(0x0CF11E06, Duration::from_millis(50));
         filter
             .min_intervals
-            .insert(0x0CF11F06, Duration::from_millis(30)); // Motor 2 - faster
+            .insert(0x0CF11F06, Duration::from_millis(50));
 
-        // MPPT - optimized for faster solar monitoring
+        // MPPT - 500ms and 1000ms from DBC
         filter
             .min_intervals
-            .insert(0x200, Duration::from_millis(250)); // MPPT1 - faster
+            .insert(0x200, Duration::from_millis(500));
         filter
             .min_intervals
-            .insert(0x201, Duration::from_millis(500)); // MPPT1 - faster
+            .insert(0x201, Duration::from_millis(1000));
         filter
             .min_intervals
-            .insert(0x202, Duration::from_millis(250)); // MPPT2 - faster
+            .insert(0x202, Duration::from_millis(500));
         filter
             .min_intervals
-            .insert(0x203, Duration::from_millis(500)); // MPPT2 - faster
+            .insert(0x203, Duration::from_millis(1000));
 
-        // BPS - faster for critical safety systems
+        // BPS - 100ms from DBC
         filter
             .min_intervals
-            .insert(0x776, Duration::from_millis(50)); // BPS critical - faster
+            .insert(0x776, Duration::from_millis(100));
         filter
             .min_intervals
-            .insert(0x777, Duration::from_millis(50)); // BPS status - faster
+            .insert(0x777, Duration::from_millis(100));
 
         filter
     }
@@ -216,13 +241,8 @@ impl FrameFilter {
                 }
             }
         } else {
-            // Adaptive default interval based on message priority
-            let default_interval = match frame.priority {
-                MessagePriority::Critical => Duration::from_millis(5),   // Critical messages - very fast
-                MessagePriority::High => Duration::from_millis(15),     // High priority - fast
-                MessagePriority::Medium => Duration::from_millis(50),   // Medium priority - moderate
-                MessagePriority::Low => Duration::from_millis(100),     // Low priority - slower
-            };
+            // Default minimum interval for unknown messages
+            let default_interval = Duration::from_millis(10);
             
             if let Some(last_time) = self.last_transmission.get(&can_id) {
                 if now.duration_since(*last_time) < default_interval {
@@ -316,7 +336,7 @@ impl ImprovedFrameBatcher {
     
     fn get_total_bytes(&self) -> usize {
         self.latest_frames.values()
-            .map(|frame| 13 + std::cmp::min(frame.data.len(), 8))
+            .map(|frame| 17 + std::cmp::min(frame.data.len(), 8))  // Updated for CRC32
             .sum()
     }
 
@@ -325,10 +345,7 @@ impl ImprovedFrameBatcher {
             return Vec::new();
         }
 
-        let mut batch = Vec::new();
-
-        // Add start marker for synchronization
-        batch.extend_from_slice(BATCH_START_MARKER);
+        let mut payload = Vec::new();
 
         // Collect frames and sort by priority (critical first, then by timestamp)
         let mut frames_to_send: Vec<_> = self.latest_frames.values().cloned().collect();
@@ -345,32 +362,41 @@ impl ImprovedFrameBatcher {
 
         // Limit to batch size
         let frame_count = std::cmp::min(frames_to_send.len(), MAX_BATCH_SIZE);
-        batch.extend_from_slice(&(frame_count as u16).to_be_bytes());
+        payload.extend_from_slice(&(frame_count as u16).to_be_bytes());
 
         // Add frames (priority-ordered)
         let mut actual_count = 0;
         for frame in frames_to_send.iter().take(frame_count) {
             let frame_bytes = frame.to_bytes();
-            batch.extend_from_slice(&frame_bytes);
+            payload.extend_from_slice(&frame_bytes);
             actual_count += 1;
         }
 
         // Update frame count if different
         if actual_count != frame_count {
             let count_bytes = &(actual_count as u16).to_be_bytes();
-            batch[4] = count_bytes[0];
-            batch[5] = count_bytes[1];
+            payload[0] = count_bytes[0];
+            payload[1] = count_bytes[1];
         }
 
-        // Add end marker for synchronization
-        batch.extend_from_slice(BATCH_END_MARKER);
+        // Calculate CRC32 for the entire payload
+        let mut hasher = Hasher::new();
+        hasher.update(&payload);
+        let crc = hasher.finalize();
+        payload.extend_from_slice(&crc.to_be_bytes());
 
-        // Calculate checksum for integrity (exclude start marker)
-        let checksum_data = &batch[4..batch.len()]; // From frame count to end marker
-        let checksum = checksum_data
-            .iter()
-            .fold(0u16, |acc, &b| acc.wrapping_add(b as u16));
-        batch.extend_from_slice(&checksum.to_be_bytes());
+        // COBS encode the payload (this eliminates the need for start/end markers)
+        let mut encoded = Vec::new();
+        match cobs::encode(&payload, &mut encoded) {
+            Ok(_) => {
+                // Add zero delimiter for COBS framing
+                encoded.push(0);
+            }
+            Err(_) => {
+                println!("COBS encoding failed, falling back to raw payload");
+                return payload;
+            }
+        }
 
         // Clear sent frames
         self.latest_frames.clear();
@@ -380,17 +406,17 @@ impl ImprovedFrameBatcher {
         self.batch_count += 1;
 
         println!(
-            "Created priority batch #{}: {} frames, {} bytes total (replaced: {})",
+            "Created COBS batch #{}: {} frames, {} bytes encoded (replaced: {})",
             self.batch_count,
             actual_count,
-            batch.len(),
+            encoded.len(),
             self.frames_replaced
         );
         
         // Reset replacement counter
         self.frames_replaced = 0;
         
-        batch
+        encoded
     }
 
     pub fn is_empty(&self) -> bool {
