@@ -345,7 +345,6 @@ impl Application for TelemetryGui {
             mppt_info,
             speed_direction,
             battery_info,
-            mppt_info,
             fault_display,
             time_display,
             warning_indicator,

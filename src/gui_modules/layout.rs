@@ -6,10 +6,9 @@ pub fn main_layout<'a>(
     is_fullscreen: bool,
     can_status: Element<'a, Message>,
     radio_status: Element<'a, Message>,
-    bms_info: &Element<'a, Message>,
+    mppt_bps_info: Element<'a, Message>,
     speed_direction: Element<'a, Message>,
     battery_info: Element<'a, Message>,
-    bps_info: Element<'a, Message>,
     fault_display: Element<'a, Message>,
     time_display: Element<'a, Message>,
     warning_indicator: Option<Element<'a, Message>>,
@@ -40,10 +39,10 @@ pub fn main_layout<'a>(
     .height(Length::Fixed(40.0))
     .padding([5, 10]);
 
-    // Main info row: BMS info (left), speed/direction (center), battery info (right)
+    // Main info row: MPPT/BPS info (left), speed/direction (center), battery info (right)
     // Fixed height to prevent shrinking
     let main_info_row = container(
-        row![bms_info, speed_direction, battery_info,]
+        row![mppt_bps_info, speed_direction, battery_info,]
             .spacing(5)
             .align_items(Alignment::Center),
     )
