@@ -231,7 +231,7 @@ BO_ 1911 BPS_State: 8 BPS
  SG_ Precharge_Fault : 8|1@1+ (1,0) [0|0] "" Vector__XXX
  SG_ BPS_Cell_Voltage_Fault : 6|2@1+ (1,0) [0|0] "" Vector__XXX
  SG_ BPS_Main_Pack_Current_Fault : 4|2@1+ (1,0) [0|0] "" Vector__XXX
- SG_ DCDC_Voltage_Fault : 2|2@1+ (1,0) [0|0] "" Vector__XXX
+ SG_ BMS_Temp_Fault : 2|2@1+ (1,0) [0|0] "" Vector__XXX
  SG_ Supp_Voltage_Fault : 0|2@1+ (1,0) [0|0] "" Vector__XXX
 
 BO_ 1680 DCS_OUT: 2 DCS
@@ -310,7 +310,7 @@ VAL_ 1911 BMS_CAN_Fault 0 "OK" 1 "BMS Fault" ;
 VAL_ 1911 Precharge_Fault 0 "OK" 1 "Precharge Fail" ;
 VAL_ 1911 BPS_Cell_Voltage_Fault 0 "OK" 1 "Lowest Cell Too Low" 2 "Highest Cell Too High" 3 "Reserved" ;
 VAL_ 1911 BPS_Main_Pack_Current_Fault 0 "OK" 1 "Charge Current Fault" 2 "Discharge Current Fault" 3 "Reserved" ;
-VAL_ 1911 DCDC_Voltage_Fault 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "Reserved" ;
+VAL_ 1911 BMS_Temp_Fault 0 "OK" 1 "Under Temp" 2 "Over Temp" 3 "Reserved" ;
 VAL_ 1911 Supp_Voltage_Fault 0 "OK" 1 "Under Voltage" 2 "Over Voltage" 3 "Reserved" ;
 
 
