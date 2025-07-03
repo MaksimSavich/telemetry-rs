@@ -387,15 +387,13 @@ impl ImprovedFrameBatcher {
 
         // COBS encode the payload (this eliminates the need for start/end markers)
         let mut encoded = Vec::new();
-        match cobs::encode(&payload, &mut encoded) {
-            Ok(_) => {
-                // Add zero delimiter for COBS framing
-                encoded.push(0);
-            }
-            Err(_) => {
-                println!("COBS encoding failed, falling back to raw payload");
-                return payload;
-            }
+        let encode_result = cobs::encode(&payload, &mut encoded);
+        if encode_result > 0 {
+            // Add zero delimiter for COBS framing
+            encoded.push(0);
+        } else {
+            println!("COBS encoding failed, falling back to raw payload");
+            return payload;
         }
 
         // Clear sent frames
@@ -1009,30 +1007,66 @@ impl Clone for SerialManager {
     }
 }
 
-// Utility functions for parsing received batches
+// Utility functions for parsing received COBS-encoded batches
 pub fn parse_can_batch(batch_data: &[u8]) -> Vec<CanFrameData> {
     let mut frames = Vec::new();
 
-    if batch_data.len() < 6 {
-        return frames; // Need at least start marker + frame count
+    if batch_data.len() < 3 {
+        return frames; // Need at least frame count + CRC
     }
 
-    // Check for start marker
-    if &batch_data[0..4] != BATCH_START_MARKER {
+    // First, COBS decode the data (remove zero delimiter if present)
+    let data_to_decode = if batch_data.ends_with(&[0]) {
+        &batch_data[..batch_data.len()-1]
+    } else {
+        batch_data
+    };
+
+    let mut decoded = Vec::new();
+    match cobs::decode(data_to_decode, &mut decoded) {
+        Ok(_) => {
+            // Successfully decoded
+        }
+        Err(_) => {
+            println!("COBS decoding failed");
+            return frames;
+        }
+    }
+
+    if decoded.len() < 6 {
+        return frames; // Need at least frame count (2) + CRC (4)
+    }
+
+    // Verify CRC32 of the payload (exclude the last 4 CRC bytes)
+    let payload_len = decoded.len() - 4;
+    let mut hasher = Hasher::new();
+    hasher.update(&decoded[..payload_len]);
+    let expected_crc = hasher.finalize();
+    
+    let actual_crc = u32::from_be_bytes([
+        decoded[payload_len],
+        decoded[payload_len + 1],
+        decoded[payload_len + 2],
+        decoded[payload_len + 3],
+    ]);
+    
+    if actual_crc != expected_crc {
+        println!("Batch CRC32 validation failed: expected 0x{:X}, got 0x{:X}", 
+                 expected_crc, actual_crc);
         return frames;
     }
 
-    let frame_count = u16::from_be_bytes([batch_data[4], batch_data[5]]) as usize;
-    let mut offset = 6; // Skip start marker and frame count
+    let frame_count = u16::from_be_bytes([decoded[0], decoded[1]]) as usize;
+    let mut offset = 2; // Skip frame count
 
     for _ in 0..frame_count {
-        if offset >= batch_data.len() {
+        if offset >= payload_len {
             break;
         }
 
-        // Find the end of this frame
-        if let Some(frame) = CanFrameData::from_bytes(&batch_data[offset..]) {
-            let frame_size = 5 + frame.data.len();
+        // Find the end of this frame (17 + data_len bytes with CRC32)
+        if let Some(frame) = CanFrameData::from_bytes(&decoded[offset..payload_len]) {
+            let frame_size = 17 + frame.data.len(); // Updated for CRC32 format
             frames.push(frame);
             offset += frame_size;
         } else {
