@@ -60,7 +60,7 @@ pub fn main_layout<'a>(
     // Bottom row with time and optional warning
     let bottom_row = if let Some(warning) = warning_indicator {
         container(
-            column![warning, time_display,]
+            row![warning, time_display,]
                 .spacing(5)
                 .align_items(Alignment::Center),
         )
