@@ -93,8 +93,9 @@ pub fn fault_display(
                 let opacity = if idx % 2 == 0 { 0.15 } else { 0.1 };
                 iced::theme::Container::Custom(Box::new(move |theme: &iced::Theme| {
                     let mut appearance = theme.appearance(&iced::theme::Container::Box);
-                    appearance.background = Some(Color::from_rgba(1.0, 0.8, 0.0, opacity).into());
-                    appearance.border.color = Color::from_rgb(1.0, 0.8, 0.0);
+                    appearance.background =
+                        Some(Color::from_rgba(238.0, 210.0, 2.0, opacity).into());
+                    appearance.border.color = Color::from_rgb(238.0, 210.0, 2.0);
                     appearance.border.width = 1.0;
                     appearance
                 }))
