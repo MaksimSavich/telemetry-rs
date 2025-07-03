@@ -1,4 +1,4 @@
-// prost import removed - no longer using protobuf
+// Simple RFD transmission without complex framing
 use serialport::{SerialPort, SerialPortType};
 use std::collections::{HashMap, VecDeque};
 use std::io::Write;
@@ -7,19 +7,15 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 use crc32fast::Hasher;
 
-// Proto imports removed - no longer using LoRa protocol
-
-// Robust framing protocol - no external dependencies, handles edge cases
-const FRAME_START: &[u8] = b"\xAA\xBB\xCC\xDD"; // 4-byte start marker
-const FRAME_END: &[u8] = b"\xEE\xFF\x00\x11";   // 4-byte end marker
-const ESCAPE_BYTE: u8 = 0x7D;                    // Escape byte for data
-const ESCAPE_XOR: u8 = 0x20;                     // XOR value for escaping
-
-// Enhanced batching configuration - conservative settings for reliability
-const MAX_BATCH_SIZE: usize = 4; // Much smaller batches for serial reliability
-const MAX_BATCH_BYTES: usize = 60; // Very conservative byte limit
-const BATCH_TIMEOUT_MS: u64 = 50; // Longer timeout for stability
+// Simple batch configuration for reliable transmission
+const MAX_BATCH_SIZE: usize = 8; // Smaller batches = better reliability  
+const MAX_BATCH_BYTES: usize = 100; // Conservative byte limit
+const BATCH_TIMEOUT_MS: u64 = 20; // Longer timeout for stability
 const MIN_BATCH_SIZE: usize = 1; // Always send at least 1 frame
+
+// Simple frame markers for synchronization
+const FRAME_START: &[u8] = b"\xAA\xBB\xCC\xDD";
+const FRAME_END: &[u8] = b"\xDD\xCC\xBB\xAA";
 
 // Radio configuration constants
 const RFD_BAUD_RATE: u32 = 57600; // RFD modem standard baud rate
@@ -52,43 +48,7 @@ pub enum MessagePriority {
 
 static SEQUENCE_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-// Robust framing utilities
-fn escape_data(data: &[u8]) -> Vec<u8> {
-    let mut escaped = Vec::with_capacity(data.len() * 2); // Pre-allocate for worst case
-    
-    for &byte in data {
-        if byte == FRAME_START[0] || byte == FRAME_START[1] || byte == FRAME_START[2] || byte == FRAME_START[3] ||
-           byte == FRAME_END[0] || byte == FRAME_END[1] || byte == FRAME_END[2] || byte == FRAME_END[3] ||
-           byte == ESCAPE_BYTE {
-            escaped.push(ESCAPE_BYTE);
-            escaped.push(byte ^ ESCAPE_XOR);
-        } else {
-            escaped.push(byte);
-        }
-    }
-    
-    escaped
-}
-
-fn unescape_data(data: &[u8]) -> Result<Vec<u8>, &'static str> {
-    let mut unescaped = Vec::with_capacity(data.len());
-    let mut i = 0;
-    
-    while i < data.len() {
-        if data[i] == ESCAPE_BYTE {
-            if i + 1 >= data.len() {
-                return Err("Incomplete escape sequence");
-            }
-            unescaped.push(data[i + 1] ^ ESCAPE_XOR);
-            i += 2;
-        } else {
-            unescaped.push(data[i]);
-            i += 1;
-        }
-    }
-    
-    Ok(unescaped)
-}
+// Simple frame utilities - no escaping needed for basic transmission
 
 impl CanFrameData {
     pub fn new(id: u32, data: &[u8]) -> Self {
@@ -388,7 +348,10 @@ impl ImprovedFrameBatcher {
             return Vec::new();
         }
 
-        let mut payload = Vec::new();
+        let mut batch = Vec::new();
+
+        // Add start marker
+        batch.extend_from_slice(FRAME_START);
 
         // Collect frames and sort by priority (critical first, then by timestamp)
         let mut frames_to_send: Vec<_> = self.latest_frames.values().cloned().collect();
@@ -405,41 +368,33 @@ impl ImprovedFrameBatcher {
 
         // Limit to batch size
         let frame_count = std::cmp::min(frames_to_send.len(), MAX_BATCH_SIZE);
-        payload.extend_from_slice(&(frame_count as u16).to_be_bytes());
+        batch.extend_from_slice(&(frame_count as u16).to_be_bytes());
 
         // Add frames (priority-ordered)
         let mut actual_count = 0;
         for frame in frames_to_send.iter().take(frame_count) {
             let frame_bytes = frame.to_bytes();
-            payload.extend_from_slice(&frame_bytes);
+            batch.extend_from_slice(&frame_bytes);
             actual_count += 1;
         }
 
         // Update frame count if different
         if actual_count != frame_count {
             let count_bytes = &(actual_count as u16).to_be_bytes();
-            payload[0] = count_bytes[0];
-            payload[1] = count_bytes[1];
+            batch[FRAME_START.len()] = count_bytes[0];
+            batch[FRAME_START.len() + 1] = count_bytes[1];
         }
 
-        // Calculate CRC32 for the entire payload
-        let mut hasher = Hasher::new();
-        hasher.update(&payload);
-        let crc = hasher.finalize();
-        payload.extend_from_slice(&crc.to_be_bytes());
-
-        // Frame the payload with start/end markers and escaping
-        let mut framed = Vec::new();
-        
-        // Add start marker
-        framed.extend_from_slice(FRAME_START);
-        
-        // Escape and add the payload
-        let escaped_payload = escape_data(&payload);
-        framed.extend_from_slice(&escaped_payload);
-        
         // Add end marker
-        framed.extend_from_slice(FRAME_END);
+        batch.extend_from_slice(FRAME_END);
+
+        // Calculate CRC32 for the entire batch (excluding markers)
+        let payload_start = FRAME_START.len();
+        let payload_end = batch.len() - FRAME_END.len();
+        let mut hasher = Hasher::new();
+        hasher.update(&batch[payload_start..payload_end]);
+        let crc = hasher.finalize();
+        batch.extend_from_slice(&crc.to_be_bytes());
 
         // Clear sent frames
         self.latest_frames.clear();
@@ -449,17 +404,17 @@ impl ImprovedFrameBatcher {
         self.batch_count += 1;
 
         println!(
-            "Created framed batch #{}: {} frames, {} bytes total (replaced: {})",
+            "Created simple batch #{}: {} frames, {} bytes total (replaced: {})",
             self.batch_count,
             actual_count,
-            framed.len(),
+            batch.len(),
             self.frames_replaced
         );
         
         // Reset replacement counter
         self.frames_replaced = 0;
         
-        framed
+        batch
     }
 
     pub fn is_empty(&self) -> bool {
@@ -1083,7 +1038,7 @@ impl Clone for SerialManager {
     }
 }
 
-// Utility functions for parsing received framed batches
+// Utility functions for parsing received simple batches
 pub fn parse_can_batch(batch_data: &[u8]) -> Vec<CanFrameData> {
     let mut frames = Vec::new();
 
@@ -1097,40 +1052,38 @@ pub fn parse_can_batch(batch_data: &[u8]) -> Vec<CanFrameData> {
         return frames;
     }
 
-    // Find end marker
-    let end_marker_pos = batch_data.len().saturating_sub(FRAME_END.len());
-    if &batch_data[end_marker_pos..] != FRAME_END {
+    // Find end marker position (should be before the CRC32)
+    let expected_end_pos = batch_data.len().saturating_sub(4 + FRAME_END.len()); // CRC32 + end marker
+    if expected_end_pos >= batch_data.len() || &batch_data[expected_end_pos..expected_end_pos + FRAME_END.len()] != FRAME_END {
         println!("Invalid end marker in batch");
         return frames;
     }
 
-    // Extract the escaped payload (between markers)
-    let escaped_payload = &batch_data[FRAME_START.len()..end_marker_pos];
-    
-    // Unescape the payload
-    let payload = match unescape_data(escaped_payload) {
-        Ok(data) => data,
-        Err(e) => {
-            println!("Unescape failed: {}", e);
-            return frames;
-        }
-    };
+    // Extract payload (between start marker and end marker)
+    let payload_start = FRAME_START.len();
+    let payload_end = expected_end_pos;
+    let payload = &batch_data[payload_start..payload_end];
 
-    if payload.len() < 6 {
-        return frames; // Need at least frame count (2) + CRC (4)
+    if payload.len() < 2 {
+        return frames; // Need at least frame count
     }
 
-    // Verify CRC32 of the payload (exclude the last 4 CRC bytes)
-    let payload_len = payload.len() - 4;
+    // Verify CRC32 of the payload
     let mut hasher = Hasher::new();
-    hasher.update(&payload[..payload_len]);
+    hasher.update(payload);
     let expected_crc = hasher.finalize();
     
+    let crc_start = expected_end_pos + FRAME_END.len();
+    if crc_start + 4 > batch_data.len() {
+        println!("Batch too short for CRC32");
+        return frames;
+    }
+    
     let actual_crc = u32::from_be_bytes([
-        payload[payload_len],
-        payload[payload_len + 1],
-        payload[payload_len + 2],
-        payload[payload_len + 3],
+        batch_data[crc_start],
+        batch_data[crc_start + 1],
+        batch_data[crc_start + 2],
+        batch_data[crc_start + 3],
     ]);
     
     if actual_crc != expected_crc {
@@ -1143,12 +1096,12 @@ pub fn parse_can_batch(batch_data: &[u8]) -> Vec<CanFrameData> {
     let mut offset = 2; // Skip frame count
 
     for _ in 0..frame_count {
-        if offset >= payload_len {
+        if offset >= payload.len() {
             break;
         }
 
         // Find the end of this frame (17 + data_len bytes with CRC32)
-        if let Some(frame) = CanFrameData::from_bytes(&payload[offset..payload_len]) {
+        if let Some(frame) = CanFrameData::from_bytes(&payload[offset..]) {
             let frame_size = 17 + frame.data.len(); // Updated for CRC32 format
             frames.push(frame);
             offset += frame_size;
@@ -1189,7 +1142,7 @@ mod tests {
 
         // Verify batch structure
         assert!(batch.len() > 10); // Should have markers, count, frames, checksum
-        assert_eq!(&batch[0..4], BATCH_START_MARKER);
+        assert_eq!(&batch[0..4], FRAME_START);
 
         let parsed_frames = parse_can_batch(&batch);
         assert_eq!(parsed_frames.len(), 2);
