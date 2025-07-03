@@ -35,7 +35,7 @@ pub struct BpsData {
     pub state: String,
 }
 
-pub fn mppt_info_box(data: &MpptData, bpsData: &BpsData) -> Element<'static, Message> {
+pub fn mppt_info_box(data: &MpptData, bps_data: &BpsData) -> Element<'static, Message> {
     container(
         column![
             text("MPPT & BPS Info").size(18),
@@ -76,8 +76,8 @@ pub fn mppt_info_box(data: &MpptData, bpsData: &BpsData) -> Element<'static, Mes
                 .width(Length::FillPortion(1)),
                 column![
                     text("BPS Info").size(20),
-                    text(format!("Time On: {:.1} Seconds", bpsData.ontime)),
-                    text(format!("BPS State: {}", bpsData.state)),
+                    text(format!("Time On: {:.1} Seconds", bps_data.ontime)),
+                    text(format!("BPS State: {}", bps_data.state)),
                 ]
                 .spacing(5)
                 .align_items(Alignment::Start),
